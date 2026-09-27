@@ -77,7 +77,8 @@ auto PopplerGlibPage::getHeight() const -> double {
 void PopplerGlibPage::render(cairo_t* cr) const {
     std::lock_guard guard(*mutex);
     cairo_save(cr);
-    cairo_set_source_rgb(cr, 1., 1., 1.);
+    // cairo_set_source_rgb(cr, 1., 1., 1.);
+    cairo_set_source_rgb(cr, 0xF2 / 255.0, 0xE5 / 255.0, 0xBC / 255.0);
     cairo_paint(cr);
     poppler_page_render(page, cr);
     cairo_restore(cr);
