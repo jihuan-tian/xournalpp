@@ -507,6 +507,9 @@ auto Layout::getMinimalPixelHeight() const -> int {
 
 auto Layout::getMinimalPixelHeightUnsafe() const -> int {
     auto rowCount = pc.mapper.getRows();
+    if (rowCount == 0 || pc.stretchableVerticalPixelsAfterRow.empty()) {
+        return pc.paddingTop + pc.paddingBottom;
+    }
     return pc.paddingTop + pc.paddingBottom + strict_cast<int>(rowCount - 1) * XOURNAL_PADDING_BETWEEN +
            ceil_cast<int>(pc.stretchableVerticalPixelsAfterRow.back() * view->getZoom());
 }
@@ -527,6 +530,9 @@ auto Layout::getMinimalPixelWidth() const -> int {
 
 auto Layout::getMinimalPixelWidthUnsafe() const -> int {
     auto colCount = pc.mapper.getColumns();
+    if (colCount == 0 || pc.stretchableHorizontalPixelsAfterColumn.empty()) {
+        return pc.paddingLeft + pc.paddingRight;
+    }
     return pc.paddingLeft + pc.paddingRight + strict_cast<int>(colCount - 1) * XOURNAL_PADDING_BETWEEN +
            ceil_cast<int>(pc.stretchableHorizontalPixelsAfterColumn.back() * view->getZoom());
 }
@@ -567,5 +573,14 @@ auto Layout::getPixelCoordinatesOfEntryUnsafe(xoj::util::Point<int> gridCoords) 
 }
 
 auto Layout::getPixelCoordinatesOfEntryUnsafe(size_t n) const -> xoj::util::Point<int> {
-    return getPixelCoords(this->pc, pc.mapper.at(n), *this->view->getViewPages()[n]);
+    const auto& pages = this->view->getViewPages();
+    if (n >= pages.size() || n >= pc.mapper.pageToRaster.size() || pages[n] == nullptr) {
+        return {0, 0};
+    }
+    const GridPosition pos = pc.mapper.at(n);
+    if (pos.col >= pc.stretchableHorizontalPixelsAfterColumn.size() ||
+        pos.row >= pc.stretchableVerticalPixelsAfterRow.size()) {
+        return {0, 0};
+    }
+    return getPixelCoords(this->pc, pos, *pages[n]);
 }

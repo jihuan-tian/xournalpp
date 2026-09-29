@@ -990,11 +990,13 @@ void XojPageView::rerenderRect(double x, double y, double width, double height) 
     this->xournal->getControl()->getScheduler()->addRerenderPage(this);
 }
 
-void XojPageView::setSelected(bool selected) {
+void XojPageView::setSelected(bool selected, bool changeFocus) {
     this->selected = selected;
 
     if (selected) {
-        this->xournal->requestFocus();
+        if (changeFocus) {
+            this->xournal->requestFocus();
+        }
         this->xournal->getRepaintHandler()->repaintPageBorder(this);
     } else {
         this->endSpline();

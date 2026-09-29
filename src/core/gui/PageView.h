@@ -96,7 +96,8 @@ public:
     xoj::util::Rectangle<double> toWidgetCoordinates(const xoj::util::Rectangle<double>& r) const override;
 
 
-    void setSelected(bool selected);
+    /// `changeFocus` grabs the canvas when the page becomes selected.
+    void setSelected(bool selected, bool changeFocus = true);
 
     void setIsVisible(bool visible);
 

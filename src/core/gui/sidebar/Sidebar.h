@@ -48,6 +48,9 @@ public:
 
     Control* getControl();
 
+    /// Page-preview tab, or null before the tabs exist.
+    class SidebarPreviewPages* getPagePreview() const { return this->pagePreview; }
+
     void setMainWindow(MainWindow* window) { this->mainWindow = window; }
     MainWindow* getMainWindow() const { return this->mainWindow; }
 
@@ -104,6 +107,7 @@ private:
 private:
     Control* control = nullptr;
     MainWindow* mainWindow = nullptr;
+    class SidebarPreviewPages* pagePreview = nullptr;
 
     /**
      * The sidebar pages

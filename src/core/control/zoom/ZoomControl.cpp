@@ -464,6 +464,8 @@ void ZoomControl::pageSizeChanged(size_t page) {
     updateZoomFitValue(page);
 }
 
+void ZoomControl::setCurrentPage(size_t page) { this->pageSelected(page); }
+
 void ZoomControl::pageSelected(size_t page) {
     if (this->view == nullptr) {
         return;

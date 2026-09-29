@@ -67,6 +67,12 @@ private:
 protected:
     virtual void mouseButtonPressCallback() = 0;
 
+    /**
+     * Button press on the preview. Return true to skip the default activation
+     * (used for the page-preview context menu, which keeps a multi-selection).
+     */
+    virtual bool handleButtonPress(GdkEventButton* event);
+
     virtual void drawLoadingPage();
     virtual void paint(cairo_t* cr);
 

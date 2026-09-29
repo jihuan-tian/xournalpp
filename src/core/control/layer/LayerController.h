@@ -31,6 +31,8 @@ public:
 public:
     void documentChanged(DocumentChangeType type) override;
     void pageSelected(size_t page) override;
+    /// Points the layer panel at `page` and rebuilds it, even when the index did not change.
+    void syncToPage(size_t page);
 
 public:
     /// Insert a layer, without adding an UndoAction

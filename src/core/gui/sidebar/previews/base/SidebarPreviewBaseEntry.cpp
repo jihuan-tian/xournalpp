@@ -32,12 +32,14 @@ SidebarPreviewBaseEntry::SidebarPreviewBaseEntry(SidebarPreviewBase* sidebar, co
                      this);
 
     const auto clickCallback = G_CALLBACK(+[](GtkWidget*, GdkEvent* event, gpointer self) {
-        // Open context menu on right mouse click
         if (event->type == GDK_BUTTON_PRESS) {
+            auto* entry = static_cast<SidebarPreviewBaseEntry*>(self);
             auto mouseEvent = reinterpret_cast<GdkEventButton*>(event);
             if (mouseEvent->button == 3) {
-                static_cast<SidebarPreviewBaseEntry*>(self)->mouseButtonPressCallback();
-                static_cast<SidebarPreviewBaseEntry*>(self)->sidebar->openPreviewContextMenu(event);
+                if (!entry->handleButtonPress(mouseEvent)) {
+                    entry->mouseButtonPressCallback();
+                }
+                entry->sidebar->openPreviewContextMenu(event);
                 return true;
             }
         }
@@ -49,6 +51,8 @@ SidebarPreviewBaseEntry::SidebarPreviewBaseEntry(SidebarPreviewBase* sidebar, co
 SidebarPreviewBaseEntry::~SidebarPreviewBaseEntry() {
     this->sidebar->getControl()->getScheduler()->removeSidebar(this);
 }
+
+bool SidebarPreviewBaseEntry::handleButtonPress(GdkEventButton*) { return false; }
 
 auto SidebarPreviewBaseEntry::drawCallback(GtkWidget* widget, cairo_t* cr, SidebarPreviewBaseEntry* preview)
         -> gboolean {

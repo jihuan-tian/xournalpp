@@ -388,6 +388,9 @@ auto Document::getPageHeight(PageRef p) -> double { return p->getHeight(); }
 auto Document::getLastErrorMsg() const -> std::string { return lastError; }
 
 void Document::deletePage(size_t pNr) {
+    if (pNr >= this->pages.size()) {
+        return;
+    }
     auto it = this->pages.begin() + as_signed(pNr);
     this->pages.erase(it);
 
@@ -397,6 +400,10 @@ void Document::deletePage(size_t pNr) {
 }
 
 void Document::insertPage(const PageRef& p, size_t position) {
+    // Appending (position == size) is valid. Anything past the end would walk off the vector.
+    if (position > this->pages.size()) {
+        position = this->pages.size();
+    }
     this->pages.insert(this->pages.begin() + as_signed(position), p);
 
     // Reset the page index

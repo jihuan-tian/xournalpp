@@ -264,9 +264,46 @@ public:
     void insertNewPage(size_t position, bool automatedInsertion = false);
     void appendNewPdfPages();
     void insertPage(const PageRef& page, size_t position, bool shouldScrollToPage = true);
+    void insertPages(const std::vector<PageRef>& pages, size_t position, bool shouldScrollToPage = true);
     void deletePage();
+    /// Deletes every listed page, leaving at least one page in the document.
+    void deletePages(const std::vector<PageRef>& pages);
+    /// Moves `pages` so the block sits before or after `targetIndex`.
+    void movePages(const std::vector<PageRef>& pages, size_t targetIndex, bool placeAfter);
     void movePageTowardsBeginning();
     void movePageTowardsEnd();
+
+    void setCopiedPages(std::vector<PageRef> pages);
+    bool hasCopiedPages() const;
+    const std::vector<PageRef>& getCopiedPages() const;
+
+    /// True while several page insert/delete events belong to one edit.
+    bool isBatchingPageChanges() const { return this->pageStructureDepth > 0; }
+
+    /// Removes pages by identity and notifies listeners. Does not record undo.
+    void removePages(const std::vector<PageRef>& pages);
+    /// Inserts existing pages as a block starting at `index`. Does not record undo.
+    void insertPagesAt(size_t index, const std::vector<PageRef>& pages);
+    /// Inserts existing pages at the given indices (ascending, parallel to `pages`). Does not record undo.
+    void insertPagesAtPositions(const std::vector<PageRef>& pages, const std::vector<size_t>& positions);
+    /**
+     * Runs a structural page edit while every window stays on the page it was showing.
+     * `activeTarget`, when set, scrolls the focused window to that page instead.
+     */
+    void runPageStructureChange(const std::function<void()>& mutate, std::optional<size_t> activeTarget = std::nullopt);
+    /// Drops deleted pages from every window's sidebar selection.
+    void prunePageSelections();
+
+    class PageChangeBatch {
+    public:
+        explicit PageChangeBatch(Control* control);
+        ~PageChangeBatch();
+        PageChangeBatch(const PageChangeBatch&) = delete;
+        PageChangeBatch& operator=(const PageChangeBatch&) = delete;
+
+    private:
+        Control* control;
+    };
 
     /**
      * Ask the user whether a page with the given id
@@ -544,6 +581,10 @@ private:
 
     Sidebar* sidebar = nullptr;
     SearchBar* searchBar = nullptr;
+
+    /// Document-level copies of pages, shared by every window of this document.
+    std::vector<PageRef> copiedPages;
+    int pageStructureDepth = 0;
 
     ToolHandler* toolHandler;
 

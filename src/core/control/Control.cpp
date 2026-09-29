@@ -63,7 +63,9 @@
 #include "gui/inputdevices/HandRecognition.h"                    // for Hand...
 #include "gui/inputdevices/SetsquareInputHandler.h"              // for Sets...
 #include "gui/menus/menubar/Menubar.h"                           // for Menubar
+#include "control/PageMove.h"
 #include "gui/sidebar/Sidebar.h"                                 // for Sidebar
+#include "gui/sidebar/previews/page/SidebarPreviewPages.h"       // for SidebarPreviewPages
 #include "gui/toolbarMenubar/ToolMenuHandler.h"                  // for Tool...
 #include "gui/toolbarMenubar/model/ToolbarData.h"                // for Tool...
 #include "gui/toolbarMenubar/model/ToolbarModel.h"               // for Tool...
@@ -91,7 +93,9 @@
 #include "settings/RecolorParameters.h"                          // for RecolorParameters
 #include "undo/AddUndoAction.h"                                  // for AddU...
 #include "undo/InsertDeletePageUndoAction.h"                     // for Inse...
+#include "undo/InsertDeletePagesUndoAction.h"                    // for Inse...
 #include "undo/InsertUndoAction.h"                               // for Inse...
+#include "undo/MovePagesUndoAction.h"                            // for Move...
 #include "undo/MoveSelectionToLayerUndoAction.h"                 // for Move...
 #include "undo/PageSizeChangeUndoAction.h"                       // for PageSizeChangeUndoAction
 #include "undo/SwapUndoAction.h"                                 // for SwapUndoAction
@@ -935,6 +939,15 @@ void Control::updatePageActions() {
 }
 
 void Control::deletePage() {
+    SidebarPreviewPages* preview = this->sidebar != nullptr ? this->sidebar->getPagePreview() : nullptr;
+    if (preview != nullptr) {
+        auto selected = preview->getSelectedPagesInOrder();
+        if (selected.size() > 1) {
+            deletePages(selected);
+            return;
+        }
+    }
+
     clearSelectionEndText();
 
     // if the current page contains the geometry tool, reset it
@@ -977,6 +990,261 @@ void Control::deletePage() {
 
     scrollHandler->scrollToPage(pNr);
     this->win->getXournal()->forceUpdatePagenumbers();
+}
+
+Control::PageChangeBatch::PageChangeBatch(Control* control): control(control) { this->control->pageStructureDepth++; }
+
+Control::PageChangeBatch::~PageChangeBatch() { this->control->pageStructureDepth--; }
+
+void Control::setCopiedPages(std::vector<PageRef> pages) {
+    this->copiedPages = std::move(pages);
+    forEachWindow([](MainWindow& window) {
+        if (window.getSidebar() != nullptr && window.getSidebar()->getPagePreview() != nullptr) {
+            window.getSidebar()->getPagePreview()->refreshActionState();
+        }
+    });
+}
+
+bool Control::hasCopiedPages() const { return !this->copiedPages.empty(); }
+
+auto Control::getCopiedPages() const -> const std::vector<PageRef>& { return this->copiedPages; }
+
+void Control::prunePageSelections() {
+    forEachWindow([](MainWindow& window) {
+        if (window.getSidebar() != nullptr && window.getSidebar()->getPagePreview() != nullptr) {
+            window.getSidebar()->getPagePreview()->pruneSelection();
+        }
+    });
+}
+
+void Control::removePages(const std::vector<PageRef>& pages) {
+    std::vector<size_t> indices;
+    this->doc->lock_shared();
+    for (const PageRef& page: pages) {
+        size_t index = this->doc->indexOf(page);
+        if (index != npos) {
+            indices.push_back(index);
+        }
+    }
+    this->doc->unlock_shared();
+    std::sort(indices.begin(), indices.end(), std::greater<>());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+
+    for (size_t index: indices) {
+        this->doc->lock();
+        this->doc->deletePage(index);
+        this->doc->unlock();
+        firePageDeleted(index);
+    }
+}
+
+void Control::insertPagesAt(size_t index, const std::vector<PageRef>& pages) {
+    if (pages.empty()) {
+        return;
+    }
+    this->doc->lock_shared();
+    const size_t count = this->doc->getPageCount();
+    this->doc->unlock_shared();
+    // position == count appends. A larger index is not a valid insertion point.
+    if (index > count) {
+        index = count;
+    }
+    for (size_t n = 0; n < pages.size(); n++) {
+        this->doc->lock();
+        this->doc->insertPage(pages[n], index + n);
+        this->doc->unlock();
+        firePageInserted(index + n);
+    }
+}
+
+void Control::insertPagesAtPositions(const std::vector<PageRef>& pages, const std::vector<size_t>& positions) {
+    xoj_assert(pages.size() == positions.size());
+    for (size_t n = 0; n < pages.size(); n++) {
+        this->doc->lock();
+        this->doc->insertPage(pages[n], positions[n]);
+        this->doc->unlock();
+        firePageInserted(positions[n]);
+    }
+}
+
+void Control::runPageStructureChange(const std::function<void()>& mutate, std::optional<size_t> activeTarget) {
+    struct SavedView {
+        XournalView* view;
+        XournalView::PageViewAnchor anchor;
+    };
+    std::vector<SavedView> saved;
+    saved.reserve(this->windows.size());
+    for (const auto& window: this->windows) {
+        if (window && window->getXournal() != nullptr) {
+            saved.push_back({window->getXournal(), window->getXournal()->capturePageAnchor()});
+        }
+    }
+
+    {
+        PageChangeBatch batch(this);
+        mutate();
+    }
+
+    XournalView* activeView = this->win != nullptr ? this->win->getXournal() : nullptr;
+    for (const SavedView& item: saved) {
+        const bool active = item.view == activeView;
+        if (active && activeTarget.has_value() && this->doc->getPageCount() > 0) {
+            size_t page = std::min(*activeTarget, this->doc->getPageCount() - 1);
+            this->scrollHandler->scrollToPage(page);
+            continue;
+        }
+        if (!item.view->restorePageAnchor(item.anchor) && active && this->doc->getPageCount() > 0) {
+            size_t page = std::min(item.view->getCurrentPage(), this->doc->getPageCount() - 1);
+            this->scrollHandler->scrollToPage(page);
+        }
+    }
+
+    for (const auto& window: this->windows) {
+        if (window == nullptr || window->getXournal() == nullptr) {
+            continue;
+        }
+        size_t page = window->getXournal()->getCurrentPage();
+        size_t pdfPage = npos;
+        if (XojPageView* pageView = window->getXournal()->getViewFor(page);
+            pageView != nullptr && pageView->getPage()) {
+            pdfPage = pageView->getPage()->getPdfPageNr();
+        }
+        window->updatePageNumbers(page, this->doc->getPageCount(), pdfPage);
+        if (window->getZoomControl() != nullptr) {
+            window->getZoomControl()->setCurrentPage(page);
+        }
+    }
+    if (this->layerController != nullptr && activeView != nullptr) {
+        this->layerController->syncToPage(activeView->getCurrentPage());
+    }
+    updatePageActions();
+    updateWindowTitle();
+}
+
+void Control::insertPages(const std::vector<PageRef>& pages, size_t position, bool shouldScrollToPage) {
+    if (pages.empty()) {
+        return;
+    }
+    this->doc->lock_shared();
+    const size_t count = this->doc->getPageCount();
+    this->doc->unlock_shared();
+    if (position > count) {
+        position = count;
+    }
+
+    std::vector<size_t> positions;
+    positions.reserve(pages.size());
+    for (size_t n = 0; n < pages.size(); n++) {
+        positions.push_back(position + n);
+    }
+
+    runPageStructureChange([&] { insertPagesAtPositions(pages, positions); },
+                           shouldScrollToPage ? std::optional<size_t>(position) : std::nullopt);
+    this->undoRedo->addUndoAction(std::make_unique<InsertDeletePagesUndoAction>(pages, std::move(positions), true));
+    updatePageActions();
+}
+
+void Control::deletePages(const std::vector<PageRef>& pages) {
+    clearSelectionEndText();
+    if (pages.empty()) {
+        return;
+    }
+
+    this->doc->lock_shared();
+    const size_t count = this->doc->getPageCount();
+    std::vector<std::pair<size_t, PageRef>> indexed;
+    indexed.reserve(pages.size());
+    for (const PageRef& page: pages) {
+        size_t index = this->doc->indexOf(page);
+        if (index != npos) {
+            indexed.emplace_back(index, page);
+        }
+    }
+    if (this->geometryToolController) {
+        const size_t geometryPage = this->doc->indexOf(this->geometryToolController->getPage());
+        for (const auto& item: indexed) {
+            if (item.first == geometryPage) {
+                this->doc->unlock_shared();
+                resetGeometryTool();
+                this->doc->lock_shared();
+                break;
+            }
+        }
+    }
+    this->doc->unlock_shared();
+
+    std::sort(indexed.begin(), indexed.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    indexed.erase(std::unique(indexed.begin(), indexed.end(),
+                              [](const auto& a, const auto& b) { return a.first == b.first; }),
+                  indexed.end());
+    if (indexed.size() >= count) {
+        indexed.erase(indexed.begin());
+    }
+    if (indexed.empty()) {
+        return;
+    }
+
+    std::vector<PageRef> removed;
+    std::vector<size_t> positions;
+    removed.reserve(indexed.size());
+    positions.reserve(indexed.size());
+    for (const auto& item: indexed) {
+        positions.push_back(item.first);
+        removed.push_back(item.second);
+    }
+
+    runPageStructureChange([&] { removePages(removed); });
+    this->undoRedo->addUndoAction(std::make_unique<InsertDeletePagesUndoAction>(removed, positions, false));
+    prunePageSelections();
+    if (this->win != nullptr && this->win->getXournal() != nullptr) {
+        this->win->getXournal()->forceUpdatePagenumbers();
+    }
+}
+
+void Control::movePages(const std::vector<PageRef>& pages, size_t targetIndex, bool placeAfter) {
+    if (pages.empty()) {
+        return;
+    }
+
+    this->doc->lock_shared();
+    const size_t count = this->doc->getPageCount();
+    std::vector<std::pair<size_t, PageRef>> indexed;
+    for (const PageRef& page: pages) {
+        size_t index = this->doc->indexOf(page);
+        if (index != npos) {
+            indexed.emplace_back(index, page);
+        }
+    }
+    this->doc->unlock_shared();
+    if (indexed.empty() || targetIndex >= count) {
+        return;
+    }
+
+    std::sort(indexed.begin(), indexed.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    indexed.erase(std::unique(indexed.begin(), indexed.end(),
+                              [](const auto& a, const auto& b) { return a.first == b.first; }),
+                  indexed.end());
+
+    std::vector<size_t> indices;
+    std::vector<PageRef> ordered;
+    indices.reserve(indexed.size());
+    ordered.reserve(indexed.size());
+    for (const auto& item: indexed) {
+        indices.push_back(item.first);
+        ordered.push_back(item.second);
+    }
+
+    const std::optional<size_t> insertAt = pageMoveInsertionIndex(indices, targetIndex, placeAfter);
+    if (!insertAt.has_value()) {
+        return;
+    }
+
+    runPageStructureChange([&] {
+        removePages(ordered);
+        insertPagesAt(*insertAt, ordered);
+    });
+    this->undoRedo->addUndoAction(
+            std::make_unique<MovePagesUndoAction>(std::move(ordered), std::move(indices), *insertAt));
 }
 
 void Control::duplicatePage() {

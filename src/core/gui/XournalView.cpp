@@ -643,11 +643,28 @@ void XournalView::pageChanged(size_t page) {
 }
 
 void XournalView::pageDeleted(size_t page) {
+    if (page >= this->viewPages.size()) {
+        return;
+    }
     const size_t previous = this->currentPage;
+    const size_t previousLast = this->lastSelectedPage;
 
     viewPages.erase(begin(viewPages) + static_cast<long>(page));
 
     layoutPages();
+
+    auto adjusted = [this, page](size_t previousIndex) -> size_t {
+        if (viewPages.empty()) {
+            return 0;
+        }
+        if (previousIndex == npos || previousIndex >= viewPages.size()) {
+            return viewPages.size() - 1;
+        }
+        if (previousIndex > page) {
+            return previousIndex - 1;
+        }
+        return previousIndex;
+    };
 
     if (viewPages.empty()) {
         this->currentPage = 0;
@@ -655,12 +672,14 @@ void XournalView::pageDeleted(size_t page) {
         return;
     }
 
-    size_t next = previous;
-    if (previous == npos || previous >= viewPages.size()) {
-        next = viewPages.size() - 1;
-    } else if (previous > page) {
-        next = previous - 1;
+    // A batch edit restores every window once, after the whole change.
+    if (control->isBatchingPageChanges()) {
+        this->currentPage = adjusted(previous);
+        this->lastSelectedPage = adjusted(previousLast);
+        return;
     }
+
+    const size_t next = adjusted(previous);
 
     // Only the active view may drive the shared scroll handler. Other views keep their own place.
     if (isActive()) {
@@ -683,17 +702,104 @@ auto XournalView::getTextEditor() const -> TextEditor* {
 auto XournalView::getCache() const -> PdfCache* { return this->cache.get(); }
 
 void XournalView::pageInserted(size_t page) {
+    const size_t viewed = this->currentPage;
+    const double scrollX = gtk_adjustment_get_value(scrollHandling->getHorizontal());
+    const double scrollY = gtk_adjustment_get_value(scrollHandling->getVertical());
+    int oldX = 0;
+    int oldY = 0;
+    const bool haveAnchor = viewed < this->viewPages.size();
+    if (haveAnchor) {
+        auto coords = getLayout()->getPixelCoordinatesOfEntry(viewed);
+        oldX = coords.x;
+        oldY = coords.y;
+    }
+
     Document* doc = control->getDocument();
     doc->lock_shared();
-    auto pageView = std::make_unique<XojPageView>(this, doc->getPage(page));
+    PageRef inserted = doc->getPage(page);
     doc->unlock_shared();
+    if (!inserted) {
+        return;
+    }
+    if (page > this->viewPages.size()) {
+        page = this->viewPages.size();
+    }
+    auto pageView = std::make_unique<XojPageView>(this, inserted);
 
     viewPages.insert(begin(viewPages) + as_signed(page), std::move(pageView));
+
+    if (viewed != npos && page <= viewed) {
+        this->currentPage++;
+    }
+    if (this->lastSelectedPage != npos && page <= this->lastSelectedPage) {
+        this->lastSelectedPage++;
+    }
 
     layoutPages();
     // check which pages are visible and select the most visible page
     Layout* layout = this->getLayout();
     layout->updateVisibility();
+
+    // Background views stay on the same page. The active view is scrolled by the caller, and a batch
+    // edit restores every view after the whole change.
+    if (!control->isBatchingPageChanges() && !isActive() && haveAnchor && this->currentPage < this->viewPages.size()) {
+        auto coords = getLayout()->getPixelCoordinatesOfEntry(this->currentPage);
+        getLayout()->scrollAbs(scrollX + (coords.x - oldX), scrollY + (coords.y - oldY));
+    }
+}
+
+auto XournalView::capturePageAnchor() const -> PageViewAnchor {
+    PageViewAnchor anchor;
+    anchor.scrollX = gtk_adjustment_get_value(scrollHandling->getHorizontal());
+    anchor.scrollY = gtk_adjustment_get_value(scrollHandling->getVertical());
+    if (this->currentPage < this->viewPages.size()) {
+        anchor.page = this->viewPages[this->currentPage]->getPage();
+        auto coords = getLayout()->getPixelCoordinatesOfEntry(this->currentPage);
+        anchor.pageX = coords.x;
+        anchor.pageY = coords.y;
+    }
+    return anchor;
+}
+
+bool XournalView::restorePageAnchor(const PageViewAnchor& anchor) {
+    if (!anchor.page) {
+        return false;
+    }
+    Document* doc = control->getDocument();
+    doc->lock_shared();
+    const size_t target = doc->indexOf(anchor.page);
+    doc->unlock_shared();
+    if (target == npos || target >= this->viewPages.size()) {
+        if (this->viewPages.empty()) {
+            this->currentPage = 0;
+            this->lastSelectedPage = npos;
+            return false;
+        }
+        // The page this window was showing was deleted. Stay on the neighbor without taking focus.
+        const size_t fallback = std::min(this->currentPage, this->viewPages.size() - 1);
+        auto fallbackCoords = getLayout()->getPixelCoordinatesOfEntry(fallback);
+        getLayout()->scrollAbs(fallbackCoords.x, fallbackCoords.y);
+        if (this->lastSelectedPage != npos && this->lastSelectedPage < this->viewPages.size() &&
+            this->lastSelectedPage != fallback) {
+            this->viewPages[this->lastSelectedPage]->setSelected(false, false);
+        }
+        this->currentPage = fallback;
+        this->lastSelectedPage = fallback;
+        this->viewPages[fallback]->setSelected(true, false);
+        return true;
+    }
+
+    auto coords = getLayout()->getPixelCoordinatesOfEntry(target);
+    getLayout()->scrollAbs(anchor.scrollX + (coords.x - anchor.pageX), anchor.scrollY + (coords.y - anchor.pageY));
+
+    if (this->lastSelectedPage != npos && this->lastSelectedPage < this->viewPages.size() &&
+        this->lastSelectedPage != target) {
+        this->viewPages[this->lastSelectedPage]->setSelected(false, false);
+    }
+    this->currentPage = target;
+    this->lastSelectedPage = target;
+    this->viewPages[target]->setSelected(true, false);
+    return true;
 }
 
 auto XournalView::getZoom() const -> double { return this->zoomControl->getZoom(); }

@@ -31,7 +31,7 @@
             <object class="GtkButton">
                 <property name="action-name">win.delete-page</property>
 <child><object class="GtkImage"><property name="visible">1</property><property name="can-focus">0</property><property name="icon-name">delete</property></object></child>
-                <property name="tooltip-text">Delete this page</property>
+                <property name="tooltip-text">Delete the selected pages</property>
             </object>
         </child>
     </object>
@@ -48,6 +48,14 @@
             <item>
                 <attribute name="label" translatable="yes">Duplicate</attribute>
                 <attribute name="action">win.duplicate-page</attribute>
+            </item>
+            <item>
+                <attribute name="label" translatable="yes">Copy</attribute>
+                <attribute name="action">win.copy-pages</attribute>
+            </item>
+            <item>
+                <attribute name="label" translatable="yes">Paste After This Page</attribute>
+                <attribute name="action">win.paste-pages</attribute>
             </item>
         </section>
         <section>

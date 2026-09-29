@@ -32,9 +32,24 @@ public:
     bool isSelected() const;
     double getZoom() const;
 
+    /// The preview that owns this button, or null.
+    static SidebarPreviewPageEntry* fromWidget(GtkWidget* widget);
+
+    /// True when a drop at these widget coordinates inserts after this page.
+    /// Coordinates may lie outside the widget (the gap before the first page or after the last).
+    bool placeAfterAt(double x, double y) const;
+    void showDropMarkerAt(double x, double y);
+
+    const PageRef& getPage() const { return this->page; }
+    SidebarPreviewPages* getSidebar() const { return this->sidebar; }
+
+    enum class DropEdge { None, Before, After };
+    void setDropEdge(DropEdge edge, bool alongX);
+
 protected:
     SidebarPreviewPages* sidebar;
     void mouseButtonPressCallback() override;
+    bool handleButtonPress(GdkEventButton* event) override;
     void paint(cairo_t* cr) override;
 
 private:
@@ -42,4 +57,9 @@ private:
     friend class PreviewJob;
 
     void drawEntryNumber(cairo_t* cr);
+    void setupDragAndDrop();
+    DropEdge dropEdgeAt(double x, double y, bool& alongX) const;
+
+    DropEdge dropEdge = DropEdge::None;
+    bool dropAlongX = false;
 };

@@ -124,6 +124,9 @@ public:
 
     bool updateZoomPresentationValue(size_t pageNo = 0);
 
+    /// Points fit and presentation zoom at this window's visible page.
+    void setCurrentPage(size_t page);
+
     void addZoomListener(ZoomListener* listener);
     void removeZoomListener(ZoomListener* listener);
 

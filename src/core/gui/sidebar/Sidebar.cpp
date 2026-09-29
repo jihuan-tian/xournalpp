@@ -10,6 +10,7 @@
 #include <gtk/gtk.h>      // for gtk_toggle_tool_button_new...
 
 #include "control/Control.h"                         // for Control
+#include "gui/MainWindow.h"                          // for MainWindow
 #include "control/settings/Settings.h"               // for Settings
 #include "gui/GladeGui.h"                            // for GladeGui
 #include "gui/sidebar/AbstractSidebarPage.h"         // for AbstractSidebar...
@@ -25,6 +26,7 @@
 #include "util/i18n.h"                               // for _, FC, _F
 
 Sidebar::Sidebar(GladeGui* gui, Control* control): control(control) {
+    this->mainWindow = static_cast<MainWindow*>(gui);
     this->tbSelectTab = GTK_BOX(gui->get("bxSidebarTopActions"));
     this->buttonCloseSidebar = gui->get("buttonCloseSidebar");
 
@@ -37,7 +39,9 @@ Sidebar::Sidebar(GladeGui* gui, Control* control): control(control) {
 
 void Sidebar::initTabs(GtkWidget* sidebarContents) {
     addTab(std::make_unique<SidebarIndexPage>(this->control));
-    addTab(std::make_unique<SidebarPreviewPages>(this->control, this));
+    auto pages = std::make_unique<SidebarPreviewPages>(this->control, this);
+    this->pagePreview = pages.get();
+    addTab(std::move(pages));
     addTab(std::make_unique<SidebarPreviewLayers>(this->control, false));
     addTab(std::make_unique<SidebarPreviewLayers>(this->control, true));
 

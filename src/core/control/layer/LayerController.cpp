@@ -50,6 +50,11 @@ void LayerController::pageSelected(size_t page) {
     fireRebuildLayerMenu();
 }
 
+void LayerController::syncToPage(size_t page) {
+    selectedPage = page;
+    fireRebuildLayerMenu();
+}
+
 void LayerController::insertLayer(PageRef page, Layer* layer, Layer::Index layerPos) {
     xoj_assert(layer);
     bool empty = layer->getElements().empty();

@@ -26,6 +26,7 @@
 #include "gui/inputdevices/InputEvents.h"  // for KeyEvent
 #include "model/DocumentChangeType.h"      // for DocumentChangeType
 #include "model/DocumentListener.h"        // for DocumentListener
+#include "model/PageRef.h"                 // for PageRef
 #include "pdf/base/XojPdfPage.h"           // for XojPdfRectangle
 #include "util/Util.h"                     // for npos
 
@@ -70,6 +71,19 @@ public:
     void pageRelativeXY(int offCol, int offRow);
 
     size_t getCurrentPage() const;
+
+    /// Scroll position and page used to keep a view on the same page across structural edits.
+    struct PageViewAnchor {
+        PageRef page;
+        double scrollX = 0;
+        double scrollY = 0;
+        int pageX = 0;
+        int pageY = 0;
+    };
+
+    PageViewAnchor capturePageAnchor() const;
+    /// Keeps the viewport on the anchored page without taking focus. Returns false if that page is gone.
+    bool restorePageAnchor(const PageViewAnchor& anchor);
 
     void clearSelection();
 
