@@ -2,6 +2,7 @@
 
 #include <array>    // for array
 #include <cstring>  // for strlen, strncmp
+#include <limits>   // for numeric_limits
 #include <string>   // for allocator, string
 
 #include <glib.h>     // for g_free, g_base64_decode, g_malloc, gsize
@@ -22,12 +23,15 @@ const char* TAG_PAGE_NAME = "page";
 const size_t TAG_PAGE_NAME_LEN = strlen(TAG_PAGE_NAME);
 const char* TAG_PREVIEW_END_NAME = "/preview";
 const size_t TAG_PREVIEW_END_NAME_LEN = strlen(TAG_PREVIEW_END_NAME);
-// max png size is: (1.02*(3*128+1)*128)+68 approx 50334
-// see https://stackoverflow.com/a/22507715/2907484
-// max base64-overhead is ceil(50334/3)*4 = 67112
-// see https://stackoverflow.com/a/4715480/2907484
-// round it up a bit
-constexpr auto BUF_SIZE = 68000;
+// Worst-case incompressible RGBA PNG of a square EMBEDDED_PREVIEW_SIZE preview,
+// then base64 expansion, plus room for the XML around the <preview> element.
+// PNG bound: https://stackoverflow.com/a/22507715/2907484
+// Base64 bound: https://stackoverflow.com/a/4715480/2907484
+// 1.02 is applied as 102/100, rounded up.
+constexpr unsigned MAX_PNG_BYTES = static_cast<unsigned>(
+        (102ull * (4ull * EMBEDDED_PREVIEW_SIZE + 1ull) * EMBEDDED_PREVIEW_SIZE + 99ull) / 100ull + 68ull);
+constexpr auto BUF_SIZE = ((MAX_PNG_BYTES + 2u) / 3u) * 4u + 4096u;
+static_assert(BUF_SIZE <= static_cast<unsigned>(std::numeric_limits<int>::max()));
 
 XojPreviewExtractor::XojPreviewExtractor() = default;
 
@@ -120,12 +124,30 @@ auto XojPreviewExtractor::readFile(const fs::path& file) -> PreviewExtractResult
             return PREVIEW_RESULT_COULD_NOT_OPEN_FILE;
         }
 
-        // The <preview> Tag is within the first 179 Bytes
+        // The <preview> tag is near the start of the file. Read until it closes
+        // (or a <page> begins) so a large preview is not truncated, without
+        // always pulling BUF_SIZE bytes out of small files.
+        std::string buffer;
+        buffer.reserve(64 * 1024);
+        std::array<char, 16 * 1024> chunk{};
+        while (buffer.size() < BUF_SIZE) {
+            const auto remaining = static_cast<unsigned>(BUF_SIZE - buffer.size());
+            const auto toRead = remaining < chunk.size() ? remaining : static_cast<unsigned>(chunk.size());
+            const int readLen = gzread(fp, chunk.data(), toRead);
+            if (readLen < 0) {
+                gzclose(fp);
+                return PREVIEW_RESULT_ERROR_READING_PREVIEW;
+            }
+            if (readLen == 0) {
+                break;
+            }
+            buffer.append(chunk.data(), static_cast<size_t>(readLen));
+            if (buffer.find("</preview>") != std::string::npos || buffer.find("<page") != std::string::npos) {
+                break;
+            }
+        }
 
-        std::array<char, BUF_SIZE> buffer{};
-        int readLen = gzread(fp, buffer.data(), BUF_SIZE);
-
-        PreviewExtractResult result = readPreview(buffer.data(), readLen);
+        PreviewExtractResult result = readPreview(buffer.data(), static_cast<int>(buffer.size()));
 
         gzclose(fp);
         return result;

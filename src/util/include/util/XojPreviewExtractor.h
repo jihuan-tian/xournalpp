@@ -16,6 +16,12 @@
 
 #include "filesystem.h"  // for path
 
+/**
+ * Longest edge, in pixels, of the preview image embedded in a saved document.
+ * File managers such as Dolphin scale this image for thumbnails, including HiDPI.
+ */
+constexpr int EMBEDDED_PREVIEW_SIZE = 512;
+
 enum PreviewExtractResult {
 
     /**

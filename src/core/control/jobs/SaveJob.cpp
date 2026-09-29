@@ -15,6 +15,7 @@
 #include "pdf/base/XojPdfPage.h"          // for XojPdfPageSPtr, XojPdfPage
 #include "util/PathUtil.h"                // for clearExtensions, safeRename...
 #include "util/XojMsgBox.h"               // for XojMsgBox
+#include "util/XojPreviewExtractor.h"    // for EMBEDDED_PREVIEW_SIZE
 #include "util/i18n.h"                    // for FS, _, _F
 #include "view/DocumentView.h"            // for DocumentView
 
@@ -45,7 +46,7 @@ void SaveJob::afterRun() {
 }
 
 void SaveJob::updatePreview(Control* control) {
-    const int previewSize = 128;
+    const int previewSize = EMBEDDED_PREVIEW_SIZE;
 
     Document* doc = control->getDocument();
     xoj::util::CairoSurfaceSPtr crBuffer;
