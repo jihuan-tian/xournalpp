@@ -42,6 +42,11 @@ public:
     void layout();
 
     /**
+     * Rebuild sidebar PDF caches and repaint previews after a PDF recoloring change.
+     */
+    void reloadPdfPreviews();
+
+    /**
      * A page was selected, so also select this page in the sidebar
      */
     void selectPageNr(size_t page, size_t pdfPage);

@@ -14,12 +14,14 @@
 #include <cstddef>  // for size_t
 #include <deque>    // for deque
 #include <mutex>    // for mutex
+#include <optional>
 #include <unordered_set>
 
 #include <cairo.h>  // for cairo_t, cairo_surface_t
 
 #include "pdf/base/XojPdfDocument.h"  // for XojPdfDocument
 #include "pdf/base/XojPdfPage.h"      // for XojPdfPageSPtr
+#include "util/Recolor.h"             // for Recolor
 
 namespace xoj::view {
 class Mask;
@@ -30,7 +32,9 @@ class Settings;
 
 class PdfCache {
 public:
-    PdfCache(const XojPdfDocument& doc, Settings* settings);
+    enum class Target { MainView, Sidebar };
+
+    PdfCache(const XojPdfDocument& doc, Settings* settings, Target target = Target::MainView);
     virtual ~PdfCache();
 
 private:
@@ -67,6 +71,12 @@ public:
     void evictAllExcept(const std::unordered_set<size_t>& retainedPdfPages);
 
     /**
+     * @brief Drop every cached page.
+     * Waits out a render that is already using this cache, instead of freeing it underneath that render.
+     */
+    void clear();
+
+    /**
      * @brief Renders an error background, for when the pdf page cannot be rendered
      */
     static void renderMissingPdfPage(cairo_t* cr, double pageWidth, double pageHeight);
@@ -79,10 +89,13 @@ private:
     /**
      * @brief Push a cache entry
      */
-    const PdfCacheEntry* cache(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer);
+    const PdfCacheEntry* cache(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer, std::optional<Recolor> recolor);
 
 private:
     XojPdfDocument pdfDocument;
+
+    Settings* settings = nullptr;
+    Target target = Target::MainView;
 
     std::mutex renderMutex;
 

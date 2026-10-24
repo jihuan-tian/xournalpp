@@ -581,6 +581,12 @@ void XournalView::recreatePdfCache() {
     doc->unlock_shared();
 }
 
+void XournalView::clearPdfCache() {
+    if (this->cache) {
+        this->cache->clear();
+    }
+}
+
 /**
  * @return Helper class for Touch specific fixes
  */

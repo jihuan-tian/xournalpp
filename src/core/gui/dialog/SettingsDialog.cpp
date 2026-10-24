@@ -530,6 +530,26 @@ void SettingsDialog::load() {
         const auto& recolor = settings->getRecolorParameters();
         loadCheckbox("cbRecolorDrawingArea", recolor.recolorizeMainView);
         loadCheckbox("cbRecolorPreviewSidebar", recolor.recolorizeSidebarMiniatures);
+        loadCheckbox("cbRecolorPdfOnly", recolor.recolorizePdf);
+        // The full drawing-area recolor already remaps the PDF. Keep the two options exclusive so
+        // the PDF is not transformed twice and handwriting is not slowed down by accident.
+        GtkCheckButton* cbRecolorPdfOnly = GTK_CHECK_BUTTON(builder.get("cbRecolorPdfOnly"));
+        GtkCheckButton* cbRecolorDrawingArea = GTK_CHECK_BUTTON(builder.get("cbRecolorDrawingArea"));
+        if (gtk_check_button_get_active(cbRecolorPdfOnly) && gtk_check_button_get_active(cbRecolorDrawingArea)) {
+            gtk_check_button_set_active(cbRecolorPdfOnly, false);
+        }
+        g_signal_connect(cbRecolorPdfOnly, "toggled", G_CALLBACK(+[](GtkCheckButton* btn, gpointer other) {
+                             if (gtk_check_button_get_active(btn)) {
+                                 gtk_check_button_set_active(GTK_CHECK_BUTTON(other), false);
+                             }
+                         }),
+                         cbRecolorDrawingArea);
+        g_signal_connect(cbRecolorDrawingArea, "toggled", G_CALLBACK(+[](GtkCheckButton* btn, gpointer other) {
+                             if (gtk_check_button_get_active(btn)) {
+                                 gtk_check_button_set_active(GTK_CHECK_BUTTON(other), false);
+                             }
+                         }),
+                         cbRecolorPdfOnly);
         color = Util::argb_to_GdkRGBA(recolor.recolor.getLight());
         gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(builder.get("recolorLight")), &color);
         color = Util::argb_to_GdkRGBA(recolor.recolor.getDark());
@@ -827,6 +847,7 @@ void SettingsDialog::save() {
         gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(builder.get("recolorDark")), &color2);
 
         settings->setRecolorParameters({getCheckbox("cbRecolorDrawingArea"), getCheckbox("cbRecolorPreviewSidebar"),
+                                        getCheckbox("cbRecolorPdfOnly"),
                                         Recolor(Util::GdkRGBA_to_argb(color), Util::GdkRGBA_to_argb(color2))});
         settings->setPdfRenderBackgroundEnabled(getCheckbox("cbPdfRenderBackground"));
         gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(builder.get("pdfRenderBackground")), &color);

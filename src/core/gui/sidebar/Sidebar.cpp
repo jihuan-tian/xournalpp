@@ -18,6 +18,7 @@
 #include "model/Document.h"                          // for Document
 #include "model/XojPage.h"                           // for XojPage
 #include "pdf/base/XojPdfPage.h"                     // for XojPdfPageSPtr
+#include "previews/base/SidebarPreviewBase.h"        // for SidebarPreviewBase
 #include "previews/layer/SidebarPreviewLayers.h"     // for SidebarPreviewL...
 #include "previews/page/SidebarPreviewPages.h"       // for SidebarPreviewP...
 #include "util/Util.h"                               // for npos
@@ -185,5 +186,13 @@ SidebarTabButton::SidebarTabButton(Sidebar* sidebar, size_t index, AbstractSideb
 void Sidebar::layout() {
     for (auto&& tab: this->tabs) {
         tab->layout();
+    }
+}
+
+void Sidebar::reloadPdfPreviews() {
+    for (auto&& tab: this->tabs) {
+        if (auto* preview = dynamic_cast<SidebarPreviewBase*>(tab.get())) {
+            preview->reloadPdfCache();
+        }
     }
 }

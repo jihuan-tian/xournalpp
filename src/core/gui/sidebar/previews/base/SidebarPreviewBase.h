@@ -66,6 +66,12 @@ public:
      */
     PdfCache* getCache();
 
+    /**
+     * Drop cached PDF renderings and repaint existing previews.
+     * Used when PDF recoloring settings change.
+     */
+    void reloadPdfCache();
+
 public:
     // DocumentListener interface (only the part handled by SidebarPreviewBase)
     void documentChanged(DocumentChangeType type) override;

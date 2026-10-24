@@ -4,18 +4,21 @@
 #include <cmath>      // for ceil, abs
 #include <cstdio>     // for size_t
 #include <memory>     // for shared_ptr, __shared_ptr_access
+#include <optional>   // for optional
 #include <string>     // for string
 #include <utility>    // for move
 
 #include <glib.h>  // for g_warning
 
-#include "control/settings/Settings.h"  // for Settings
-#include "pdf/base/XojPdfDocument.h"    // for XojPdfDocument
-#include "util/Assert.h"                // for xoj_assert
-#include "util/Range.h"                 // for Range
-#include "util/i18n.h"                  // for _
-#include "util/safe_casts.h"            // for as_unsigned
-#include "view/Mask.h"                  // for Mask
+#include "control/settings/RecolorParameters.h"  // for RecolorParameters
+#include "control/settings/Settings.h"           // for Settings
+#include "pdf/base/XojPdfDocument.h"             // for XojPdfDocument
+#include "util/Assert.h"                         // for xoj_assert
+#include "util/Range.h"                          // for Range
+#include "util/i18n.h"                           // for _
+#include "util/raii/CairoWrappers.h"             // for CairoSaveGuard
+#include "util/safe_casts.h"                     // for as_unsigned
+#include "view/Mask.h"                           // for Mask
 
 class PdfCacheEntry {
 public:
@@ -29,21 +32,38 @@ public:
      * @param popplerPage
      * @param buffer is the result of rendering popplerPage
      */
-    PdfCacheEntry(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer):
-            popplerPage(std::move(popplerPage)), buffer(std::forward<xoj::view::Mask>(buffer)) {}
+    PdfCacheEntry(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer, std::optional<Recolor> recolor):
+            popplerPage(std::move(popplerPage)),
+            buffer(std::forward<xoj::view::Mask>(buffer)),
+            recolor(std::move(recolor)) {}
 
     ~PdfCacheEntry() = default;
 
     XojPdfPageSPtr popplerPage;
     xoj::view::Mask buffer;
+    /// Recolor baked into buffer. Empty when the PDF was rendered with its original colors.
+    std::optional<Recolor> recolor;
 };
+
+static auto activePdfRecolor(const Settings* settings, PdfCache::Target target) -> std::optional<Recolor> {
+    if (settings == nullptr) {
+        return std::nullopt;
+    }
+    const auto& params = settings->getRecolorParameters();
+    const bool coveringRecolor = target == PdfCache::Target::Sidebar ? params.recolorizeSidebarMiniatures :
+                                                                       params.recolorizeMainView;
+    return params.cachedPdfRecolor(coveringRecolor);
+}
 
 static double getPercentZoomChange(double oldZoom, double newZoom) {
     double averagedZoom = (oldZoom + newZoom) / 2.0;
     return std::abs(oldZoom - newZoom) * 100.0 / averagedZoom;
 }
 
-PdfCache::PdfCache(const XojPdfDocument& doc, Settings* settings): pdfDocument(doc) { updateSettings(settings); }
+PdfCache::PdfCache(const XojPdfDocument& doc, Settings* settings, Target target):
+        pdfDocument(doc), settings(settings), target(target) {
+    updateSettings(settings);
+}
 
 PdfCache::~PdfCache() = default;
 
@@ -58,9 +78,15 @@ void PdfCache::setMaxSize(size_t newSize) {
 
 void PdfCache::updateSettings(Settings* settings) {
     if (settings) {
+        this->settings = settings;
         setMaxSize(as_unsigned(settings->getPdfPageCacheSize()));
         setRefreshThreshold(settings->getPDFPageRerenderThreshold());
     }
+}
+
+void PdfCache::clear() {
+    std::lock_guard<std::mutex> lock(this->renderMutex);
+    this->data.clear();
 }
 
 void PdfCache::evictAllExcept(const std::unordered_set<size_t>& retainedPdfPages) {
@@ -89,7 +115,8 @@ auto PdfCache::lookup(size_t pdfPageNo) const -> const PdfCacheEntry* {
     return nullptr;
 }
 
-auto PdfCache::cache(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer) -> const PdfCacheEntry* {
+auto PdfCache::cache(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer, std::optional<Recolor> recolor)
+        -> const PdfCacheEntry* {
     xoj_assert(this->maxSize > 0);
     xoj_assert(popplerPage);
     const auto pageId = popplerPage->getPageId();
@@ -104,8 +131,8 @@ auto PdfCache::cache(XojPdfPageSPtr popplerPage, xoj::view::Mask&& buffer) -> co
         this->data.resize(this->maxSize - 1);
     }
 
-    this->data.emplace_front(
-            std::make_unique<PdfCacheEntry>(std::move(popplerPage), std::forward<xoj::view::Mask>(buffer)));
+    this->data.emplace_front(std::make_unique<PdfCacheEntry>(
+            std::move(popplerPage), std::forward<xoj::view::Mask>(buffer), std::move(recolor)));
 
     return this->data.front().get();
 }
@@ -114,8 +141,9 @@ void PdfCache::render(cairo_t* cr, size_t pdfPageNo, double zoom, double pageWid
     std::lock_guard<std::mutex> lock(this->renderMutex);
 
     const PdfCacheEntry* cacheResult = lookup(pdfPageNo);
+    const std::optional<Recolor> pdfRecolor = activePdfRecolor(this->settings, this->target);
 
-    bool needsRefresh = cacheResult == nullptr;
+    bool needsRefresh = cacheResult == nullptr || cacheResult->recolor != pdfRecolor;
 
     if (!needsRefresh) {
         // If we do have a cached result, is its rendering quality
@@ -138,12 +166,20 @@ void PdfCache::render(cairo_t* cr, size_t pdfPageNo, double zoom, double pageWid
         xoj::view::Mask buffer(cairo_get_target(cr), Range(0, 0, popplerPage->getWidth(), popplerPage->getHeight()),
                                renderZoom, CAIRO_CONTENT_COLOR_ALPHA);
         popplerPage->render(buffer.get());
+        // Map light and dark once, then cache the result. Strokes are drawn later, on top of this buffer,
+        // so handwriting is neither recolored nor forced through this pass on every repaint.
+        if (pdfRecolor) {
+            cairo_t* bufferCr = buffer.get();
+            xoj::util::CairoSaveGuard guard(bufferCr);
+            cairo_reset_clip(bufferCr);
+            pdfRecolor->recolorCurrentCairoRegion(bufferCr);
+        }
         if (this->maxSize == 0) {
             buffer.paintTo(cr);
             return;
         }
 
-        cacheResult = cache(popplerPage, std::move(buffer));
+        cacheResult = cache(popplerPage, std::move(buffer), pdfRecolor);
     }
 
     cacheResult->buffer.paintTo(cr);

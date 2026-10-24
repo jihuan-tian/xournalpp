@@ -203,7 +203,7 @@ void Settings::loadDefault() {
     this->selectionMarkerColor = Colors::xopp_cornflowerblue;
     this->activeSelectionColor = Colors::lawngreen;
 
-    this->recolorParameters = {false, false, Recolor(ColorU8{198, 208, 245}, ColorU8{48, 52, 70})};
+    this->recolorParameters = {false, false, false, Recolor(ColorU8{198, 208, 245}, ColorU8{48, 52, 70})};
 
     this->backgroundColor = Colors::xopp_gainsboro02;
     this->pdfRenderBackgroundEnabled = false;
@@ -561,6 +561,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("recolor.sidebar")) == 0) {
         this->recolorParameters.recolorizeSidebarMiniatures =
                 xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("recolor.pdf")) == 0) {
+        this->recolorParameters.recolorizePdf = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("recolor.light")) == 0) {
         this->recolorParameters.recolor =
                 Recolor(ColorU8(g_ascii_strtoull(reinterpret_cast<const char*>(value), nullptr, 10)),
@@ -1146,6 +1148,7 @@ void Settings::save() {
 
     xmlNode = saveProperty("recolor.enabled", recolorParameters.recolorizeMainView ? "true" : "false", root);
     xmlNode = saveProperty("recolor.sidebar", recolorParameters.recolorizeSidebarMiniatures ? "true" : "false", root);
+    xmlNode = saveProperty("recolor.pdf", recolorParameters.recolorizePdf ? "true" : "false", root);
     xmlNode = savePropertyUnsigned("recolor.dark", uint32_t(recolorParameters.recolor.getDark()), root);
     xmlNode = savePropertyUnsigned("recolor.light", uint32_t(recolorParameters.recolor.getLight()), root);
 

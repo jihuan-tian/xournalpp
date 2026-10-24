@@ -150,6 +150,11 @@ public:
     void recreatePdfCache();
 
     /**
+     * Drop cached PDF renderings. The cache object stays alive so an in-progress render can finish.
+     */
+    void clearPdfCache();
+
+    /**
      * A pen action was detected now, therefore ignore touch events
      * for a short time
      */

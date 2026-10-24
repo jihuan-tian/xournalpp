@@ -1961,16 +1961,33 @@ void Control::showSettings() {
                     reloadToolbars = true;
                 }
 
-                if (settingsBeforeDialog.pdfRenderBackgroundEnabled != settings->isPdfRenderBackgroundEnabled() ||
-                    settingsBeforeDialog.pdfRenderBackgroundColor != settings->getPdfRenderBackgroundColor()) {
-                    ctrl->forEachWindow([](MainWindow& window) {
-                        XournalView* view = window.getXournal();
-                        if (view == nullptr) {
-                            return;
+                const RecolorParameters& recolorNow = settings->getRecolorParameters();
+                const bool pdfBackgroundChanged =
+                        settingsBeforeDialog.pdfRenderBackgroundEnabled != settings->isPdfRenderBackgroundEnabled() ||
+                        settingsBeforeDialog.pdfRenderBackgroundColor != settings->getPdfRenderBackgroundColor();
+                const bool mainPdfRecolorChanged =
+                        settingsBeforeDialog.recolorParameters.cachedPdfRecolor(
+                                settingsBeforeDialog.recolorParameters.recolorizeMainView) !=
+                        recolorNow.cachedPdfRecolor(recolorNow.recolorizeMainView);
+                const bool sidebarPdfRecolorChanged =
+                        settingsBeforeDialog.recolorParameters.cachedPdfRecolor(
+                                settingsBeforeDialog.recolorParameters.recolorizeSidebarMiniatures) !=
+                        recolorNow.cachedPdfRecolor(recolorNow.recolorizeSidebarMiniatures);
+
+                if (pdfBackgroundChanged || mainPdfRecolorChanged || sidebarPdfRecolorChanged) {
+                    ctrl->forEachWindow([&](MainWindow& window) {
+                        if (pdfBackgroundChanged || mainPdfRecolorChanged) {
+                            if (XournalView* view = window.getXournal()) {
+                                // Do not destroy the cache here. The recolor pass for a large page may still be
+                                // painting into it, and freeing that cache crashes.
+                                view->clearPdfCache();
+                                for (const auto& page: view->getViewPages()) {
+                                    page->rerenderPage();
+                                }
+                            }
                         }
-                        view->recreatePdfCache();
-                        for (const auto& page: view->getViewPages()) {
-                            page->rerenderPage();
+                        if ((pdfBackgroundChanged || sidebarPdfRecolorChanged) && window.getSidebar() != nullptr) {
+                            window.getSidebar()->reloadPdfPreviews();
                         }
                     });
                 }
