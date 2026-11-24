@@ -1,5 +1,6 @@
 #include "XournalppCursor.h"
 
+#include <algorithm>         // for clamp, max, min
 #include <cmath>             // for cos, sin, M_PI, NAN, fmod
 #include <cstdint>           // for uint32_t
 #include <initializer_list>  // for initializer_list
@@ -397,10 +398,12 @@ auto XournalppCursor::getResizeCursor(double deltaAngle) -> GdkCursor* {
 }
 
 auto XournalppCursor::getEraserCursor() -> GdkCursor* {
-
-    // Eraser's size follow a quadratic increment, so the cursor will do the same
-    double cursorSize = control->getToolHandler()->getThickness() * 2.0 * control->getZoomControl()->getZoom();
-    gulong flavour = static_cast<gulong>(64 * cursorSize);
+    // Circle diameter matches the erase disk: radius is the tool thickness, in page points, times zoom.
+    const double radius = control->getToolHandler()->getThickness() * control->getZoomControl()->getZoom();
+    constexpr double outlinePad = 2.0;
+    constexpr double maxCursor = 512.0;
+    const double cursorSize = std::clamp(2.0 * radius + 2.0 * outlinePad, 4.0, maxCursor);
+    const gulong flavour = static_cast<gulong>(64 * cursorSize);
 
     if (CRSR_ERASER == this->currentCursor && flavour == this->currentCursorFlavour) {
         return nullptr;  // cursor already set
@@ -408,18 +411,23 @@ auto XournalppCursor::getEraserCursor() -> GdkCursor* {
     this->currentCursor = CRSR_ERASER;
     this->currentCursorFlavour = flavour;
 
-    cairo_surface_t* surface =
-            cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ceil_cast<int>(cursorSize), ceil_cast<int>(cursorSize));
+    const int size = ceil_cast<int>(cursorSize);
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
     cairo_t* cr = cairo_create(surface);
-    cairo_rectangle(cr, 0, 0, cursorSize, cursorSize);
-    cairo_set_source_rgb(cr, 1, 1, 1);
-    cairo_fill(cr);
-    cairo_rectangle(cr, 0, 0, cursorSize, cursorSize);
-    cairo_set_source_rgb(cr, 0, 0, 0);
+    const double cx = cursorSize / 2.0;
+    const double cy = cursorSize / 2.0;
+    const double drawnRadius = std::max(0.5, std::min(radius, cursorSize / 2.0 - outlinePad));
+
+    cairo_new_path(cr);
+    cairo_arc(cr, cx, cy, drawnRadius, 0, 2 * M_PI);
+    cairo_set_line_width(cr, 3.0);
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.95);
+    cairo_stroke_preserve(cr);
+    cairo_set_line_width(cr, 1.0);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.95);
     cairo_stroke(cr);
     cairo_destroy(cr);
-    GdkCursor* cursor =
-            gdk_cursor_new_from_surface(gdk_display_get_default(), surface, cursorSize / 2.0, cursorSize / 2.0);
+    GdkCursor* cursor = gdk_cursor_new_from_surface(gdk_display_get_default(), surface, cx, cy);
     cairo_surface_destroy(surface);
     return cursor;
 }

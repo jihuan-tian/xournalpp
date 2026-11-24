@@ -71,6 +71,12 @@ private:
 
     std::optional<std::array<double, toolSizes>> thickness;
 
+    /**
+     * Continuous thickness, in page points. When set, it overrides the preset size.
+     * Used by the eraser so its radius can change smoothly.
+     */
+    std::optional<double> customThickness;
+
     ToolCapabilities capabilities;
 
     friend class ToolHandler;

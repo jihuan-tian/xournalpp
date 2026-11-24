@@ -99,6 +99,16 @@ auto PenInputHandler::actionStart(InputEvent const& event) -> bool {
 
     ToolHandler* toolHandler = this->inputContext->getToolHandler();
 
+    // Shift-drag resizes the eraser. Do this before the outside-page hand fallback so it also works in the margin.
+    if (toolHandler->getToolType() == TOOL_ERASER && (event.state & GDK_SHIFT_MASK)) {
+        this->resizingEraser = true;
+        this->resizeOriginX = event.relative.x;
+        this->resizeStartRadius = std::max(toolHandler->getThickness(), ToolHandler::ERASER_MIN_RADIUS);
+        this->inputRunning = true;
+        this->penInWidget = true;
+        return true;
+    }
+
     // If the input starts outside a page, we make it act as hand tool instead.
     if (currentPage == nullptr && toolHandler->pointActiveToolToToolType(TOOL_HAND)) {
         this->inputStartedOutsidePageArea = true;
@@ -269,6 +279,16 @@ bool PenInputHandler::isCurrentTapSelection(InputEvent const& event) const {
 }
 
 auto PenInputHandler::actionMotion(InputEvent const& event) -> bool {
+    if (this->resizingEraser) {
+        // 100 screen pixels doubles or halves the radius.
+        constexpr double pixelsPerDoubling = 100.0;
+        const double dx = event.relative.x - this->resizeOriginX;
+        const double radius = this->resizeStartRadius * std::pow(2.0, dx / pixelsPerDoubling);
+        this->inputContext->getToolHandler()->setEraserThickness(radius);
+        this->updateLastEvent(event);
+        return true;
+    }
+
     /*
      * Workaround for misbehaving devices where Enter events are not published every time
      * This is required to disable outside scrolling again
@@ -418,6 +438,16 @@ auto PenInputHandler::actionEnd(InputEvent const& event) -> bool {
     EditSelection* selection = xournal->view->getSelection();
 
     cursor->setMouseDown(false);
+
+    if (this->resizingEraser) {
+        this->resizingEraser = false;
+        this->inputStartedOutsidePageArea = false;
+        this->inputRunning = false;
+        this->sequenceStartPage = nullptr;
+        this->lastActionEndTimeStamp = event.timestamp;
+        toolHandler->saveSettings();
+        return false;
+    }
 
     this->inputStartedOutsidePageArea = false;
 

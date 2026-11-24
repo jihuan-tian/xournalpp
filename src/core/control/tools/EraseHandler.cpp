@@ -41,6 +41,7 @@ EraseHandler::~EraseHandler() {
  * Handle eraser event: "Delete Stroke" and "Standard", Whiteout is not handled here
  */
 void EraseHandler::erase(double x, double y) {
+    // Radius of the circular eraser. The rectangle is only its bounding box, used to skip distant strokes.
     this->halfEraserSize = this->handler->getThickness();
     xoj::util::Rectangle<double> eraserRect(x - halfEraserSize, y - halfEraserSize, 2 * halfEraserSize,
                                             2 * halfEraserSize);
@@ -66,7 +67,7 @@ void EraseHandler::eraseStroke(Layer* l, Stroke* s, double x, double y, Range& r
     if (!erasable) {
         if (this->handler->getEraserType() == ERASER_TYPE_DELETE_STROKE) {
             if (!s->intersects(x, y, halfEraserSize)) {
-                // The stroke does not intersect the eraser square
+                // The stroke does not meet the eraser disk
                 return;
             }
 
@@ -101,7 +102,7 @@ void EraseHandler::eraseStroke(Layer* l, Stroke* s, double x, double y, Range& r
             auto intersectionParameters = s->intersectWithPaddedBox(paddedEraserBox);
 
             if (intersectionParameters.empty()) {
-                // The stroke does not intersect the eraser square
+                // The stroke does not meet the eraser disk
                 return;
             }
 

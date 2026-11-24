@@ -71,6 +71,14 @@ protected:
     bool inputStartedOutsidePageArea = false;
 
     /**
+     * Shift-drag while the eraser is active changes its radius instead of erasing.
+     * Horizontal movement scales the radius exponentially, the same way Krita changes brush size.
+     */
+    bool resizingEraser = false;
+    double resizeOriginX = 0.0;
+    double resizeStartRadius = 0.0;
+
+    /**
      * Flag whether pen is within the widget
      */
     bool penInWidget = false;

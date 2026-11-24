@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 cmake_policy(VERSION 3.12)
 
-file(GLOB_RECURSE xournalpp_sources *.cpp *.h)
+file(GLOB_RECURSE xournalpp_sources CONFIGURE_DEPENDS *.cpp *.h)
 
 if(NOT ENABLE_AUDIO)
     list(FILTER xournalpp_sources EXCLUDE REGEX "${PROJECT_SOURCE_DIR}/src/core/audio/.*" )

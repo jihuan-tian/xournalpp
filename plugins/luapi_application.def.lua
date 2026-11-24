@@ -1236,6 +1236,7 @@ function app.setFont(font) end
 ---| "tool-pen-fill-opacity"
 ---| "tool-eraser-size"
 ---| "tool-eraser-type"
+---| "tool-eraser-radius"
 ---| "tool-highlighter-size"
 ---| "tool-highlighter-fill"
 ---| "tool-highlighter-fill-opacity"

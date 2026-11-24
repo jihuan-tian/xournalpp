@@ -38,6 +38,7 @@
 #include "SpacerItem.h"
 #include "StylePopoverFactory.h"     // for ToolButtonWithStylePopover
 #include "ToolButton.h"              // for ToolButton
+#include "ToolEraserSlider.h"        // for ToolEraserSlider
 #include "ToolPageLayer.h"           // for ToolPageLayer
 #include "ToolPageSpinner.h"         // for ToolPageSpinner
 #include "ToolPdfCombocontrol.h"     // for ToolPdfCombocontrol
@@ -379,6 +380,7 @@ void ToolMenuHandler::initToolItems() {
                                                     {_("delete stroke"), ERASER_TYPE_DELETE_STROKE}});
     emplaceCustomItemWithTargetAndMenu("ERASER", Cat::TOOLS, Action::SELECT_TOOL, TOOL_ERASER, "tool-eraser",
                                        _("Eraser"), this->eraserTypePopover.get());
+    emplaceItem<ToolEraserSlider>("ERASER_RADIUS", iconNameHelper, *control->getActionDatabase());
 
     // Add individual line styles as toolbar items
     emplaceCustomItemWithTarget("PLAIN", Cat::TOOLS, Action::TOOL_PEN_LINE_STYLE, "plain", "line-style-plain-with-pen",

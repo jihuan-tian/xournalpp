@@ -114,6 +114,8 @@ void GeometryToolController::initializeStroke() {
             break;
         case TOOL_ERASER:
             stroke->setToolType(StrokeTool::ERASER);
+            // Round caps: painted radius is half the stroke width. Match the circular eraser.
+            stroke->setWidth(2.0 * h->getThickness());
             break;
         default:
             g_warning("Unhandled tool when initializing stroke in geometry tool controller");

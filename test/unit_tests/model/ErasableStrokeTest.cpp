@@ -172,66 +172,73 @@ TEST(ErasableStroke, testGetStrokes) {
 }
 
 
-TEST(ErasableStroke, testIntersectWithPaddedBox) {
+TEST(ErasableStroke, testIntersectWithPaddedCircle) {
+    // Straight stroke along y = 0 from x = 0 to x = 100.
     Stroke stroke;
-    stroke.addPoint({0, 0, 2});     // 0
-    stroke.addPoint({2, 2, 2.5});   // 1
-    stroke.addPoint({5, 2, 3});     // 2
-    stroke.addPoint({7, 4, 2.5});   // 3
-    stroke.addPoint({3, 6, 2});     // 4
-    stroke.addPoint({2, 8, 1.5});   // 5
-    stroke.addPoint({5, 11, 1});    // 6
-    stroke.addPoint({7, 10, 1.5});  // 7
-    stroke.addPoint({7, 6, 2});     // 8
-    stroke.addPoint({6, 7, 2.5});   // 9
-    stroke.addPoint({4, 4, 3});     // 10
-    stroke.addPoint({1, 3});        // 11 = (10, 1.0)
-    stroke.setWidth(3);
-    stroke.setFill(-1);
-    stroke.setToolType(StrokeTool::PEN);
+    stroke.addPoint({0, 0});
+    stroke.addPoint({100, 0});
 
-    std::array<PaddedBox, 10> boxes;
-    std::array<IntersectionParametersContainer, 10> expectedResult;
-    // Start in padding. Pass by inner box. End in padding, not going toward inner box.
-    boxes[0] = {Point(1, 1), 0.5, 3};
-    expectedResult[0] = {{0, 0.0}, {1, 2.0 / 3.0}};
-    // Start on inner box boundary. Pass inside. End in padding, not going toward inner box.
-    boxes[1] = {Point(1, 1), 1, 3};
-    expectedResult[1] = {{0, 0.0}, {1, 2.0 / 3.0}};
-    // Start in padding. Pass by inner box. End in padding going toward inner box
-    boxes[2] = {Point(1, 1), 1.9, 3.5};
-    expectedResult[2] = {{0, 0.0}, {1, 5.0 / 6.0}, {9, 5.0 / 6.0}, {10, 1.0}};
-    // Start on padding boundary, pass by inner box
-    boxes[3] = {Point(1, 1), 0.5, 1};
-    expectedResult[3] = {{0, 0.0}, {0, 1.0}};
-    // Intersect padding, not inner box
-    boxes[4] = {Point(2, 11), 1, 2};
-    expectedResult[4] = {};
-    // Intersect padding and inner box
-    boxes[5] = {Point(2, 8), 1, 4};
-    expectedResult[5] = {{3, 0.25}, {6, 0.5}};
-    // Intersect inner box and end in padding boundary
-    boxes[6] = {Point(2.5, 3.5), 0.5, 2};
-    expectedResult[6] = {{9, 0.75}, {10, 1.0}};
-
-    boxes[7] = {Point(6, 6), 1.1, 2};
-    expectedResult[7] = {{2, 1.0}, {3, .75}, {7, 0.5}, {9, 1.0}};
-    boxes[8] = {Point(7, 7.5), 1, 1.5};
-    expectedResult[8] = {{7, .25}, {9, 0.25}};
-    boxes[9] = {Point(6, 8), 0.5, 1};
-    expectedResult[9] = {};
-
-    for (unsigned int i = 0; i < boxes.size(); ++i) {
-        auto res = stroke.intersectWithPaddedBox(boxes[i]);
-        printf("Test box %u: ", i);
-        for (auto p: res) { printf("(%zu, %4.2f) ", p.index, p.t); }
-        printf("\n");
-        EXPECT_EQ(res.size(), expectedResult[i].size());
-        for (unsigned int j = 0; j < std::min(res.size(), expectedResult[i].size()); ++j) {
-            printf("   Found (%zu, %4.2f) - expected (%zu, %4.2f)\n", res[j].index, res[j].t,
-                   expectedResult[i][j].index, expectedResult[i][j].t);
-            EXPECT_EQ(res[j].index, expectedResult[i][j].index);
-            EXPECT_DOUBLE_EQ(res[j].t, expectedResult[i][j].t);
-        }
+    // Disk centered on the stroke. Crossings at x = 40 and x = 60.
+    {
+        PaddedBox disk{{50, 0}, 10, 10};
+        auto res = stroke.intersectWithPaddedBox(disk);
+        ASSERT_EQ(res.size(), 2U);
+        EXPECT_EQ(res[0].index, 0U);
+        EXPECT_DOUBLE_EQ(res[0].t, 0.4);
+        EXPECT_EQ(res[1].index, 0U);
+        EXPECT_DOUBLE_EQ(res[1].t, 0.6);
     }
+
+    // Stroke begins at the center and leaves the disk at x = 60, t = 1/3 of (50 -> 80).
+    Stroke fromCenter;
+    fromCenter.addPoint({50, 0});
+    fromCenter.addPoint({80, 0});
+    {
+        PaddedBox disk{{50, 0}, 10, 10};
+        auto res = fromCenter.intersectWithPaddedBox(disk);
+        ASSERT_EQ(res.size(), 2U);
+        EXPECT_EQ(res[0].index, 0U);
+        EXPECT_DOUBLE_EQ(res[0].t, 0.0);
+        EXPECT_EQ(res[1].index, 0U);
+        EXPECT_DOUBLE_EQ(res[1].t, 1.0 / 3.0);
+    }
+
+    // Outer disk is hit, inner disk is not: nothing is erased.
+    {
+        PaddedBox disk{{50, 20}, 5, 25};
+        auto res = stroke.intersectWithPaddedBox(disk);
+        EXPECT_TRUE(res.empty());
+    }
+
+    // Starts in the padding, passes through the inner disk, then leaves.
+    // Outer radius 15 crosses at x = 35 and x = 65. The stroke starts at x = 40.
+    Stroke fromPadding;
+    fromPadding.addPoint({40, 0});
+    fromPadding.addPoint({100, 0});
+    {
+        PaddedBox disk{{50, 0}, 5, 15};
+        auto res = fromPadding.intersectWithPaddedBox(disk);
+        ASSERT_EQ(res.size(), 2U);
+        EXPECT_EQ(res[0].index, 0U);
+        EXPECT_DOUBLE_EQ(res[0].t, 0.0);
+        EXPECT_EQ(res[1].index, 0U);
+        EXPECT_DOUBLE_EQ(res[1].t, 25.0 / 60.0);
+    }
+}
+
+TEST(Stroke, eraserFootprintIsACircle) {
+    // (60, 0) lies in the corner of a square of half-side 10 centered at (50, 10),
+    // and outside the disk of radius 10.
+    Stroke corner;
+    corner.addPoint({60, 0});
+    corner.addPoint({80, 0});
+    EXPECT_FALSE(corner.intersects(50, 10, 10));
+
+    Stroke hit;
+    hit.addPoint({50, 0});
+    hit.addPoint({80, 0});
+    EXPECT_TRUE(hit.intersects(50, 10, 10));
+
+    PaddedBox disk{{50, 10}, 10, 10};
+    EXPECT_TRUE(corner.intersectWithPaddedBox(disk).empty());
 }

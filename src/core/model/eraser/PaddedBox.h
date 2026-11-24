@@ -1,7 +1,12 @@
 /**
  * Xournal++
  *
- * @brief Small structure for a square with a padding
+ * @brief Circular eraser footprint, plus the padding used to catch thick strokes.
+ *
+ * halfSize is the inner radius: the disk that is actually erased.
+ * halfSizeWithPadding is the outer radius: the inner radius plus a margin of the stroke width.
+ * The rectangles below are the axis-aligned bounds of those disks. They are used to repaint
+ * and to skip strokes that cannot meet the eraser.
  *
  * @author Xournal++ Team
  * https://github.com/xournalpp/xournalpp
@@ -16,7 +21,9 @@
 
 struct PaddedBox {
     Point center;
+    /// Inner radius of the circular eraser.
     double halfSize;
+    /// Outer radius, including stroke-width padding.
     double halfSizeWithPadding;
 
     xoj::util::Rectangle<double> getInnerRectangle() const {
