@@ -128,6 +128,78 @@ void XojPageView::setIsVisible(bool visible) { this->visible = visible; }
 void XojPageView::deleteViewBuffer() {
     std::lock_guard lock(this->drawingMutex);
     this->buffer.reset();
+    this->bufferedRange = Range();
+}
+
+namespace {
+/// @p outer contains @p inner in page coordinates.
+bool rangeCovers(const Range& outer, const Range& inner) {
+    return outer.isValid() && inner.isValid() && !inner.empty() && outer.minX <= inner.minX &&
+           outer.minY <= inner.minY && outer.maxX >= inner.maxX && outer.maxY >= inner.maxY;
+}
+}  // namespace
+
+bool XojPageView::useViewportBuffer() const {
+    if (this->xournal->getControl()->isPageAutomaticGrowthActive()) {
+        return true;
+    }
+    // A page that has already grown must not allocate a bitmap of its whole area.
+    constexpr double MAX_FULL_PAGE_AREA = 4000.0 * 4000.0;
+    return this->page->getWidth() * this->page->getHeight() > MAX_FULL_PAGE_AREA;
+}
+
+Range XojPageView::computeBufferTarget() const {
+    const double pageW = this->page->getWidth();
+    const double pageH = this->page->getHeight();
+    const Range full(0, 0, pageW, pageH);
+    if (!useViewportBuffer()) {
+        return full;
+    }
+
+    const Range visible = getVisiblePart();
+    if (!visible.isValid() || visible.empty()) {
+        // The page is off-screen. Keep the cached bitmap small until the page is shown.
+        const double zoom = std::max(getZoom(), 0.1);
+        constexpr double FALLBACK_PX = 512.0;
+        const double fallbackPt = FALLBACK_PX / zoom;
+        return Range(0, 0, std::min(pageW, fallbackPt), std::min(pageH, fallbackPt));
+    }
+
+    const double padX = std::max(48.0, 0.5 * visible.getWidth());
+    const double padY = std::max(48.0, 0.5 * visible.getHeight());
+    Range padded(std::max(0.0, visible.minX - padX), std::max(0.0, visible.minY - padY),
+                 std::min(pageW, visible.maxX + padX), std::min(pageH, visible.maxY + padY));
+    if (!padded.isValid() || padded.empty()) {
+        return full;
+    }
+    return padded;
+}
+
+void XojPageView::ensureViewportBuffer() {
+    if (!useViewportBuffer()) {
+        return;
+    }
+    const Range visible = getVisiblePart();
+    if (!visible.isValid() || visible.empty()) {
+        if (!hasBuffer()) {
+            rerenderPage();
+        }
+        return;
+    }
+
+    Range cached;
+    double cachedZoom = 0;
+    {
+        std::lock_guard lock(this->drawingMutex);
+        cached = this->bufferedRange;
+        if (this->buffer.isInitialized()) {
+            cachedZoom = this->buffer.getZoom();
+        }
+    }
+    if (rangeCovers(cached, visible) && cachedZoom == getZoom()) {
+        return;
+    }
+    rerenderPage();
 }
 
 auto XojPageView::containsPoint(int x, int y, bool local) const -> bool {
@@ -284,6 +356,8 @@ auto XojPageView::onButtonPressEvent(const PositionInputData& pos) -> bool {
     double zoom = xournal->getZoom();
     x /= zoom;
     y /= zoom;
+
+    xournal->getControl()->extendPageToFit(this->page, x, y, 0, 0);
 
     XournalppCursor* cursor = xournal->getCursor();
     cursor->setMouseDown(true);
@@ -593,6 +667,8 @@ auto XojPageView::onMotionNotifyEvent(const PositionInputData& pos) -> bool {
     double x = pos.x / zoom;
     double y = pos.y / zoom;
 
+    xournal->getControl()->extendPageToFit(this->page, x, y, 0, 0);
+
     ToolHandler* h = xournal->getControl()->getToolHandler();
     auto* pdfToolbox = this->xournal->getControl()->getWindow()->getPdfToolbox();
 
@@ -893,8 +969,13 @@ auto XojPageView::onKeyReleaseEvent(const KeyEvent& event) -> bool {
 }
 
 void XojPageView::rerenderPage(bool sizeChanged) {
-    this->rerenderComplete = true;
-    this->sizeChanged = sizeChanged;
+    const Range target = computeBufferTarget();
+    {
+        std::lock_guard lock(this->repaintRectMutex);
+        this->rerenderComplete = true;
+        this->sizeChanged = sizeChanged;
+        this->bufferTargetRange = target;
+    }
     this->xournal->getControl()->getScheduler()->addRerenderPage(this);
 }
 
@@ -1147,6 +1228,14 @@ auto XojPageView::paintPage(cairo_t* cr, GdkRectangle* rect) -> bool {
     xoj::util::CairoSaveGuard saveGuard(cr);
     cairo_scale(cr, zoom, zoom);
 
+    // A viewport-sized cache does not cover the whole page. Fill the sheet so the
+    // uncovered part is paper rather than the window background.
+    if (useViewportBuffer()) {
+        Util::cairo_set_source_rgbi(cr, this->page->getBackgroundColor());
+        cairo_rectangle(cr, 0, 0, this->page->getWidth(), this->page->getHeight());
+        cairo_fill(cr);
+    }
+
     {
         std::lock_guard lock(this->drawingMutex);  // Lock the mutex first
         xoj::util::CairoSaveGuard saveGuard(cr);   // see comment at the end of the scope
@@ -1155,7 +1244,12 @@ auto XojPageView::paintPage(cairo_t* cr, GdkRectangle* rect) -> bool {
             return true;
         }
 
-        if (this->buffer.getZoom() != zoom) {
+        bool needsRerender = this->buffer.getZoom() != zoom;
+        if (!needsRerender && useViewportBuffer()) {
+            const Range visible = getVisiblePart();
+            needsRerender = visible.isValid() && !visible.empty() && !rangeCovers(this->bufferedRange, visible);
+        }
+        if (needsRerender) {
             rerenderPage();
             cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_FAST);
         }

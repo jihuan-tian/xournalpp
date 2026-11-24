@@ -9,8 +9,9 @@
 #include "util/Util.h"        // for npos
 #include "util/i18n.h"        // for _
 
-PageSizeChangeUndoAction::PageSizeChangeUndoAction(const PageRef& page, double origW, double origH):
-        UndoAction("PageSizeChangeUndoAction"), otherWidth(origW), otherHeight(origH) {
+PageSizeChangeUndoAction::PageSizeChangeUndoAction(const PageRef& page, double origW, double origH,
+                                                   bool automatic):
+        UndoAction("PageSizeChangeUndoAction"), otherWidth(origW), otherHeight(origH), automatic(automatic) {
     this->page = page;
 }
 
@@ -39,4 +40,12 @@ auto PageSizeChangeUndoAction::swapSizes(Control* control) -> bool {
 auto PageSizeChangeUndoAction::undo(Control* control) -> bool { return swapSizes(control); }
 auto PageSizeChangeUndoAction::redo(Control* control) -> bool { return swapSizes(control); }
 
-auto PageSizeChangeUndoAction::getText() -> std::string { return _("Page size changed"); }
+auto PageSizeChangeUndoAction::getText() -> std::string {
+    return this->automatic ? _("Page extended") : _("Page size changed");
+}
+
+auto PageSizeChangeUndoAction::isAutomatic() const -> bool { return this->automatic; }
+
+auto PageSizeChangeUndoAction::getOtherWidth() const -> double { return this->otherWidth; }
+
+auto PageSizeChangeUndoAction::getOtherHeight() const -> double { return this->otherHeight; }

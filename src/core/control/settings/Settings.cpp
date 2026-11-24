@@ -135,6 +135,7 @@ void Settings::loadDefault() {
     this->addVerticalSpaceAmountBelow = 150;
 
     this->unlimitedScrolling = false;
+    this->pageAutomaticGrowth = false;
 
     // Drawing direction emulates modifier keys
     this->drawDirModsRadius = 50;
@@ -606,6 +607,8 @@ void Settings::parseItem(xmlDocPtr doc, xmlNodePtr cur) {
                 static_cast<int>(g_ascii_strtoll(reinterpret_cast<const char*>(value), nullptr, 10));
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("unlimitedScrolling")) == 0) {
         this->unlimitedScrolling = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
+    } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("pageAutomaticGrowth")) == 0) {
+        this->pageAutomaticGrowth = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("drawDirModsEnabled")) == 0) {
         this->drawDirModsEnabled = xmlStrcmp(value, reinterpret_cast<const xmlChar*>("true")) == 0;
     } else if (xmlStrcmp(name, reinterpret_cast<const xmlChar*>("drawDirModsRadius")) == 0) {
@@ -1130,6 +1133,9 @@ void Settings::save() {
 
     SAVE_BOOL_PROP(unlimitedScrolling);
 
+    SAVE_BOOL_PROP(pageAutomaticGrowth);
+    ATTACH_COMMENT("Extend the page to the right and bottom when drawing approaches its edge");
+
     SAVE_BOOL_PROP(drawDirModsEnabled);
     SAVE_INT_PROP(drawDirModsRadius);
 
@@ -1476,6 +1482,10 @@ void Settings::setAddHorizontalSpaceAmountLeft(int pixels) {
 }
 
 auto Settings::getUnlimitedScrolling() const -> bool { return this->unlimitedScrolling; }
+
+auto Settings::isPageAutomaticGrowth() const -> bool { return this->pageAutomaticGrowth; }
+
+void Settings::setPageAutomaticGrowth(bool enable) { this->pageAutomaticGrowth = enable; }
 
 void Settings::setUnlimitedScrolling(bool enable) {
     if (enable == this->unlimitedScrolling) {

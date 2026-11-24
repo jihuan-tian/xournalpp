@@ -65,6 +65,7 @@ constexpr const char* ACTION_NAMES[] = {  // Action to string conversion map
         "configure-page-template",
         "delete-page",
         "paper-format",
+        "page-automatic-growth",
         "paper-background-color",
         "select-tool",
         "select-default-tool",

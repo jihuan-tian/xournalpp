@@ -22,7 +22,7 @@ class Control;
 
 class PageSizeChangeUndoAction: public UndoAction {
 public:
-    PageSizeChangeUndoAction(const PageRef& page, double origW, double origH);
+    PageSizeChangeUndoAction(const PageRef& page, double origW, double origH, bool automatic = false);
     ~PageSizeChangeUndoAction() override;
 
 public:
@@ -31,8 +31,15 @@ public:
 
     std::string getText() override;
 
+    /// Growth performed by Page Automatic Growth. Consecutive growth steps are merged.
+    bool isAutomatic() const;
+    /// Size restored by undo while this action is still on the undo stack.
+    double getOtherWidth() const;
+    double getOtherHeight() const;
+
 private:
     bool swapSizes(Control* ctrl);
     double otherWidth;
     double otherHeight;
+    bool automatic;
 };

@@ -2,6 +2,7 @@
 
 #include <algorithm>  // for max
 #include <cstdlib>    // for size_t
+#include <limits>     // for numeric_limits
 #include <exception>  // for exce...
 #include <functional>  // for bind
 #include <iterator>    // for end
@@ -1443,6 +1444,12 @@ void Control::updateBackgroundSizeButton() {
         return;
     }
 
+    // Page Automatic Growth stays available for blank journals and is disabled while a PDF is annotated.
+    this->doc->lock_shared();
+    const bool pdfAnnotated = this->doc->getPdfPageCount() > 0;
+    this->doc->unlock_shared();
+    this->actionDB->enableAction(Action::PAGE_AUTOMATIC_GROWTH, !pdfAnnotated);
+
     // Update paper color button
     auto const& p = getCurrentPage();
     if (!p || this->win == nullptr) {
@@ -2387,6 +2394,15 @@ void Control::fileLoaded(int scrollToPage) {
     win->getXournal()->forceUpdatePagenumbers();
     getCursor()->updateCursor();
     updatePageActions();
+    updateBackgroundSizeButton();
+    // Opening or leaving a PDF changes whether the page origin stays pinned.
+    if (settings->isPageAutomaticGrowth()) {
+        this->forEachWindow([](MainWindow& window) {
+            if (XournalView* view = window.getXournal()) {
+                view->layoutPages();
+            }
+        });
+    }
 }
 
 enum class MissingPdfDialogOptions : gint { USE_PROPOSED, SELECT_OTHER, REMOVE, CANCEL };
@@ -3367,6 +3383,119 @@ void Control::setRotationSnapping(bool enable) {
 void Control::setGridSnapping(bool enable) {
     settings->setSnapGrid(enable);
     this->actionDB->setActionState(Action::GRID_SNAPPING, enable);
+}
+
+void Control::setPageAutomaticGrowth(bool enable) {
+    settings->setPageAutomaticGrowth(enable);
+    this->actionDB->setActionState(Action::PAGE_AUTOMATIC_GROWTH, enable);
+    // Pinning the page origin (and releasing it again) is applied by the next layout.
+    this->forEachWindow([](MainWindow& window) {
+        if (XournalView* view = window.getXournal()) {
+            view->layoutPages();
+        }
+    });
+}
+
+auto Control::isPageAutomaticGrowthActive() const -> bool {
+    if (!this->settings->isPageAutomaticGrowth()) {
+        return false;
+    }
+    // A document that annotates a PDF keeps its fixed page size.
+    return this->doc == nullptr || this->doc->getPdfPageCount() == 0;
+}
+
+void Control::extendPageToFit(const PageRef& page, double x, double y, double width, double height) {
+    if (!page || this->extendingPage || !isPageAutomaticGrowthActive()) {
+        return;
+    }
+    if (page->getBackgroundType().isPdfPage()) {
+        return;
+    }
+    this->doc->lock_shared();
+    const size_t pageIndex = this->doc->indexOf(page);
+    this->doc->unlock_shared();
+
+    XournalView* xournal = this->win ? this->win->getXournal() : nullptr;
+    XojPageView* pageView = nullptr;
+    this->forEachWindow([&](MainWindow& window) {
+        XournalView* view = window.getXournal();
+        if (view == nullptr) {
+            return;
+        }
+        XojPageView* candidate = view->getViewFor(pageIndex);
+        if (candidate != nullptr && candidate->isVisible()) {
+            pageView = candidate;
+            xournal = view;
+        }
+    });
+    if (xournal == nullptr) {
+        return;
+    }
+
+    const double zoom = std::max(xournal->getZoom(), 1.0);
+    double stepX = 400.0;
+    double stepY = 400.0;
+    if (pageView != nullptr) {
+        std::unique_ptr<xoj::util::Rectangle<double>> visible(xournal->getVisibleRect(pageView));
+        if (visible && visible->width > 1.0 && visible->height > 1.0) {
+            stepX = visible->width;
+            stepY = visible->height;
+        }
+    }
+
+    // Stay well below the pixel size stored as int by the layout, at the current zoom.
+    constexpr double MAX_PAGE_PT = 100000.0;
+    const double pixelCap = static_cast<double>(std::numeric_limits<int>::max() / 8) / zoom;
+    const double cap = std::min(MAX_PAGE_PT, pixelCap);
+    constexpr double MARGIN_PT = 48.0;
+
+    this->doc->lock();
+    const double pageWidth = page->getWidth();
+    const double pageHeight = page->getHeight();
+    const double right = x + std::max(0.0, width);
+    const double bottom = y + std::max(0.0, height);
+    // Keep the trigger near the edge, including on a page that is only a few margins wide.
+    const double marginX = std::min(MARGIN_PT, std::max(1.0, pageWidth * 0.2));
+    const double marginY = std::min(MARGIN_PT, std::max(1.0, pageHeight * 0.2));
+
+    double newWidth = pageWidth;
+    double newHeight = pageHeight;
+    if (right > pageWidth - marginX && pageWidth < cap) {
+        newWidth = std::min(cap, std::max(pageWidth + stepX, right + marginX));
+    }
+    if (bottom > pageHeight - marginY && pageHeight < cap) {
+        newHeight = std::min(cap, std::max(pageHeight + stepY, bottom + marginY));
+    }
+    if (newWidth == pageWidth && newHeight == pageHeight) {
+        this->doc->unlock();
+        return;
+    }
+
+    Document::setPageSize(page, newWidth, newHeight);
+    const size_t pageNo = this->doc->indexOf(page);
+    this->doc->unlock();
+
+    double undoWidth = pageWidth;
+    double undoHeight = pageHeight;
+    if (UndoAction* last = this->undoRedo->getLastUndoAction()) {
+        if (auto* previous = dynamic_cast<PageSizeChangeUndoAction*>(last)) {
+            const auto pages = previous->getPages();
+            if (previous->isAutomatic() && pages.size() == 1 && pages[0] == page) {
+                // Keep restoring the size from before the first step of this growth.
+                undoWidth = previous->getOtherWidth();
+                undoHeight = previous->getOtherHeight();
+                this->undoRedo->discardLastUndoAction();
+            }
+        }
+    }
+    this->undoRedo->addUndoAction(
+            std::make_unique<PageSizeChangeUndoAction>(page, undoWidth, undoHeight, /*automatic*/ true));
+
+    this->extendingPage = true;
+    if (pageNo != npos) {
+        this->firePageSizeChanged(pageNo);
+    }
+    this->extendingPage = false;
 }
 
 auto Control::getTextEditor() -> TextEditor* {

@@ -511,6 +511,10 @@
      <attribute name="action">win.paper-format</attribute>
     </item>
     <item>
+     <attribute name="label" translatable="yes">Page Automatic Growth</attribute>
+     <attribute name="action">win.page-automatic-growth</attribute>
+    </item>
+    <item>
      <attribute name="label" translatable="yes">Paper _Color</attribute>
      <attribute name="action">win.paper-background-color</attribute>
     </item>
