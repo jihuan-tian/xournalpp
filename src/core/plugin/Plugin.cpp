@@ -84,9 +84,22 @@ size_t Plugin::populateMenuSection(GtkApplicationWindow* win, size_t startId) {
 
     constexpr char PATH_SEP = '/';
 
-    // The menu should never be populated twice.
-    // If this assert ever fails, do not recreate the GSimpleAction's below
-    xoj_assert(!menuSection);
+    // The menu model and its actions are created for the first window. Another view of the same
+    // document reuses them and only publishes the actions on the new window. Recreating the
+    // actions would change their names and break the menu items already stored in menuSection.
+    if (this->menuSection) {
+        for (const auto& entry: menuEntries) {
+            if (!entry.action) {
+                continue;
+            }
+            const char* name = g_action_get_name(G_ACTION(entry.action.get()));
+            if (name == nullptr || g_action_map_lookup_action(G_ACTION_MAP(win), name) != nullptr) {
+                continue;
+            }
+            g_action_map_add_action(G_ACTION_MAP(win), G_ACTION(entry.action.get()));
+        }
+        return startId + menuEntries.size();
+    }
 
     this->menuSection.reset(g_menu_new(), xoj::util::adopt);
 
