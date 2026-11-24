@@ -100,6 +100,7 @@ enum class Action : size_t {
     CONFIGURE_PAGE_TEMPLATE,
     DELETE_PAGE,
     PAPER_FORMAT,
+    PAGE_AUTOMATIC_GROWTH,
     PAPER_BACKGROUND_COLOR,
 
     // Menu Tools

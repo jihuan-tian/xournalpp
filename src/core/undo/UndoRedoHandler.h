@@ -42,6 +42,12 @@ public:
 
     void addUndoAction(UndoActionPtr action);
 
+    /// The action that undo() would run, or nullptr. Not removed.
+    UndoAction* getLastUndoAction() const;
+
+    /// Drop the newest undo action without running it and without pushing it onto the redo stack.
+    void discardLastUndoAction();
+
     std::string undoDescription();
     std::string redoDescription();
 

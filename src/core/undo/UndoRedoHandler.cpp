@@ -155,6 +155,27 @@ auto UndoRedoHandler::canRedo() -> bool { return !this->redoList.empty(); }
 /**
  * Adds an undo Action to the list, or if nullptr does nothing
  */
+auto UndoRedoHandler::getLastUndoAction() const -> UndoAction* {
+    if (this->undoList.empty()) {
+        return nullptr;
+    }
+    return this->undoList.back().get();
+}
+
+void UndoRedoHandler::discardLastUndoAction() {
+    if (this->undoList.empty()) {
+        return;
+    }
+    UndoAction* last = this->undoList.back().get();
+    if (this->savedUndo == last) {
+        this->savedUndo = nullptr;
+    }
+    if (this->autosavedUndo == last) {
+        this->autosavedUndo = nullptr;
+    }
+    this->undoList.pop_back();
+}
+
 void UndoRedoHandler::addUndoAction(UndoActionPtr action) {
     if (!action) {
         return;

@@ -567,6 +567,15 @@ struct ActionProperties<Action::PAPER_FORMAT> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->paperFormat(); }
 };
 template <>
+struct ActionProperties<Action::PAGE_AUTOMATIC_GROWTH> {
+    using state_type = bool;
+    static state_type initialState(Control* ctrl) { return ctrl->getSettings()->isPageAutomaticGrowth(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        ctrl->setPageAutomaticGrowth(g_variant_get_boolean(p));
+    }
+};
+template <>
 struct ActionProperties<Action::PAPER_BACKGROUND_COLOR> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->changePageBackgroundColor(); }
 };

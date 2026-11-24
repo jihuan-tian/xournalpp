@@ -66,18 +66,29 @@ void RenderJob::run() {
     bool rerenderComplete = std::exchange(this->view->rerenderComplete, false);
     bool sizeChanged = std::exchange(this->view->sizeChanged, false);
     auto rerenderRects = std::move(this->view->rerenderRects);
+    Range target = this->view->bufferTargetRange;
 
     this->view->repaintRectMutex.unlock();
 
     if (rerenderComplete) {
-        xoj::view::Mask newMask(view->xournal->getDpiScaleFactor(),
-                                Range(0, 0, view->page->getWidth(), view->page->getHeight()), view->xournal->getZoom(),
+        const Range pageRange(0, 0, view->page->getWidth(), view->page->getHeight());
+        if (!target.isValid() || target.empty()) {
+            target = pageRange;
+        } else {
+            target = target.intersect(pageRange);
+            if (!target.isValid() || target.empty()) {
+                target = pageRange;
+            }
+        }
+
+        xoj::view::Mask newMask(view->xournal->getDpiScaleFactor(), target, view->xournal->getZoom(),
                                 CAIRO_CONTENT_COLOR_ALPHA);
 
         renderToBuffer(newMask.get());
         {
             std::lock_guard lock(this->view->drawingMutex);
             std::swap(this->view->buffer, newMask);
+            this->view->bufferedRange = target;
         }
         if (sizeChanged) {
             // We do not have any control on what portion of the widget needs to be redrawn. Redraw it all.

@@ -26,6 +26,7 @@
 #include "gui/inputdevices/InputEvents.h"
 #include "model/PageListener.h"       // for PageListener
 #include "model/PageRef.h"            // for PageRef
+#include "util/Range.h"               // for Range
 #include "util/Rectangle.h"           // for Rectangle
 #include "util/raii/CairoWrappers.h"  // for CairoSurfaceSPtr
 #include "view/Mask.h"                // for Mask
@@ -48,7 +49,6 @@ class VerticalToolHandler;
 class XournalView;
 class Element;
 class PositionInputData;
-class Range;
 class TexImage;
 class XojPdfRectangle;
 class XojPdfPage;
@@ -100,6 +100,12 @@ public:
     void setSelected(bool selected, bool changeFocus = true);
 
     void setIsVisible(bool visible);
+
+    /**
+     * When automatic growth is on, keep the page cache to the visible area.
+     * A full-page bitmap is kept for ordinary pages.
+     */
+    void ensureViewportBuffer();
 
     bool isSelected() const;
     inline bool isVisible() const { return visible; }
@@ -270,6 +276,10 @@ private:
     bool selected = false;
 
     xoj::view::Mask buffer;
+    /// Page coordinates covered by @c buffer. Empty until the first render.
+    Range bufferedRange;
+    /// Page coordinates the in-flight full rerender should cover.
+    Range bufferTargetRange;
     std::mutex drawingMutex;
 
     bool inEraser = false;
@@ -300,6 +310,10 @@ private:
 
     friend class RenderJob;
     friend class InputHandler;
+
+    /// Viewport-sized cache while Page Automatic Growth is on, or when the page is too large to bitmap whole.
+    bool useViewportBuffer() const;
+    Range computeBufferTarget() const;
     friend class BaseSelectObject;
     friend class SelectObject;
     friend class PlayObject;

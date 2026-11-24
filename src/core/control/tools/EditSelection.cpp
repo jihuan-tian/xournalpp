@@ -802,6 +802,11 @@ void EditSelection::moveSelection(double dx, double dy, bool addMoveUndo) {
     this->snappedBounds.x += dx;
     this->snappedBounds.y += dy;
 
+    // Make room before the selection is pushed past the right or bottom edge.
+    this->view->getXournal()->getControl()->extendPageToFit(this->view->getPage(), this->snappedBounds.x,
+                                                             this->snappedBounds.y, this->snappedBounds.width,
+                                                             this->snappedBounds.height);
+
     updateMatrix();
 
     if (addMoveUndo) {
@@ -842,6 +847,11 @@ bool EditSelection::handleEdgePan(EditSelection* self) {
         return false;
     }
 
+
+    // Grow before measuring the layout, so edge-pan is not clamped to the old page edge.
+    self->view->getXournal()->getControl()->extendPageToFit(self->view->getPage(), self->snappedBounds.x,
+                                                             self->snappedBounds.y, self->snappedBounds.width,
+                                                             self->snappedBounds.height);
 
     Layout* layout = self->view->getXournal()->getLayout();
     const Settings* const settings = self->getView()->getXournal()->getControl()->getSettings();

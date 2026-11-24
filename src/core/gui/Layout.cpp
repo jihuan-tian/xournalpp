@@ -284,6 +284,10 @@ void Layout::updateVisibility() {
         }
     }
     this->previouslyVisiblePages = std::move(visiblePages);
+    // Refresh viewport-sized page caches after the layout mutex is released.
+    for (size_t index: this->previouslyVisiblePages) {
+        this->view->getViewPages()[index]->ensureViewportBuffer();
+    }
     if (mostPageNr) {
         this->view->notifyVisiblePage(*mostPageNr);
     }
@@ -363,6 +367,13 @@ void Layout::computePrecalculated() {
 }
 
 void Layout::recomputeCenteringPaddingUnsafe(int allocWidth, int allocHeight) {
+    // Growing to the right and bottom must not recenter the page, or existing ink jumps under the pen.
+    if (this->view->getControl()->isPageAutomaticGrowthActive()) {
+        pc.horizontalCenteringPadding = 0;
+        pc.verticalCenteringPadding = 0;
+        return;
+    }
+
     if (int w = getMinimalPixelWidthUnsafe(); w < allocWidth) {
         // We have more space than needed: add padding to center the content
         pc.horizontalCenteringPadding = (allocWidth - w) / 2;

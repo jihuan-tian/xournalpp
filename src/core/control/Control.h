@@ -237,6 +237,15 @@ public:
     void updateBackgroundSizeButton();
 
     /**
+     * Extend @p page to the right and/or bottom so the rectangle stays inside the page,
+     * with room for another viewport of paper. No-op unless Page Automatic Growth applies.
+     */
+    void extendPageToFit(const PageRef& page, double x, double y, double width, double height);
+
+    /// Page Automatic Growth is enabled and this document is not annotating a PDF.
+    bool isPageAutomaticGrowthActive() const;
+
+    /**
      * Loads the view mode (hide/show menu-,tool-&sidebar)
      */
     bool loadViewMode(ViewModeId mode);
@@ -441,6 +450,7 @@ public:
 protected:
     void setRotationSnapping(bool enable);
     void setGridSnapping(bool enable);
+    void setPageAutomaticGrowth(bool enable);
 
     void showFontDialog();
     void showColorChooserDialog();
@@ -635,6 +645,9 @@ private:
     GtkProgressBar* pgState = nullptr;
     size_t maxState = 0;
     bool isBlocking;
+
+    /// Guards extendPageToFit against re-entry from the layout it triggers.
+    bool extendingPage = false;
 
     GladeSearchpath* gladeSearchPath;
 

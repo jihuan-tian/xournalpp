@@ -139,6 +139,7 @@ static const std::map<std::string_view, Action> BOOLEAN_ACTION_MAP = {
         {"ACTION_AUDIO_RECORD"sv, Action::AUDIO_RECORD},
         {"ACTION_GRID_SNAPPING"sv, Action::GRID_SNAPPING},
         {"ACTION_ROTATION_SNAPPING"sv, Action::ROTATION_SNAPPING},
+        {"ACTION_PAGE_AUTOMATIC_GROWTH"sv, Action::PAGE_AUTOMATIC_GROWTH},
         {"ACTION_HIGHLIGHT_POSITION"sv, Action::POSITION_HIGHLIGHTING}};
 
 static const std::map<std::string_view, const char*> LINE_STYLE_MAP = {{"ACTION_TOOL_LINE_STYLE_PLAIN"sv, "plain"},

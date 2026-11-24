@@ -308,6 +308,13 @@ public:
     bool getUnlimitedScrolling() const;
     void setUnlimitedScrolling(bool enable);
 
+    /**
+     * Grow the current page to the right and bottom when drawing approaches its edge.
+     * Has no effect while a PDF is being annotated.
+     */
+    bool isPageAutomaticGrowth() const;
+    void setPageAutomaticGrowth(bool enable);
+
     bool getDrawDirModsEnabled() const;
     void setDrawDirModsEnabled(bool enable);
     int getDrawDirModsRadius() const;
@@ -957,6 +964,11 @@ private:
      * Enables unlimited scrolling, which automatically adds maximum space to scroll outside the page
      */
     bool unlimitedScrolling{};
+
+    /**
+     * Automatically extend a non-PDF page to the right and bottom while drawing
+     */
+    bool pageAutomaticGrowth{};
 
     /**
      * Emulate modifier keys based on initial direction of drawing tool ( for Rectangle, Ellipse etc. )
