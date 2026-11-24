@@ -13,7 +13,9 @@
 #define DEBUG_THUMBNAILER false
 
 #include <algorithm>  // for max, min
+#include <cmath>      // for lround
 #include <cstdio>     // for fclose, fopen, fwrite, FILE
+#include <cstdlib>    // for strtol
 #include <iostream>   // for endl, ostream, basic_ostream
 #include <locale>     // for locale
 #include <string>     // for string, basic_string, allocator
@@ -116,9 +118,19 @@ fs::path findAppIcon() {
 int main(int argc, char* argv[]) {
     initLocalisation();
 
-    // check args count
-    if (argc != 3) {
-        logMessage(_("xoj-preview-extractor: call with INPUT.xoj OUTPUT.png"), true);
+    // INPUT OUTPUT [SIZE]. SIZE is the thumbnail edge in pixels (%s from a
+    // file manager). The embedded preview is larger than a typical request;
+    // scaling it down here keeps the result sharp. A missing or invalid size
+    // keeps the full preview.
+    int requestedSize = 0;
+    if (argc == 4) {
+        char* end = nullptr;
+        const long parsed = std::strtol(argv[3], &end, 10);
+        if (end != argv[3] && *end == '\0' && parsed > 0 && parsed <= 100000) {
+            requestedSize = static_cast<int>(parsed);
+        }
+    } else if (argc != 3) {
+        logMessage(_("xoj-preview-extractor: call with INPUT.xoj OUTPUT.png [SIZE]"), true);
         return 1;
     }
 
@@ -175,11 +187,31 @@ int main(int argc, char* argv[]) {
     ReadClosure closure{0, imageData, dataLen};
     cairo_surface_t* thumbnail = cairo_image_surface_create_from_png_stream(processRead, &closure);
     // This application is short-lived, so we'll purposefully be sloppy and let the OS free memory.
+    cairo_surface_t* output = thumbnail;
     if (cairo_surface_status(thumbnail) == CAIRO_STATUS_SUCCESS) {
+        const int width = cairo_image_surface_get_width(thumbnail);
+        const int height = cairo_image_surface_get_height(thumbnail);
+        const int longEdge = std::max(width, height);
+        if (requestedSize > 0 && longEdge > requestedSize) {
+            const double scale = static_cast<double>(requestedSize) / static_cast<double>(longEdge);
+            const int newWidth = std::max(1, static_cast<int>(std::lround(width * scale)));
+            const int newHeight = std::max(1, static_cast<int>(std::lround(height * scale)));
+            cairo_surface_t* scaled = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, newWidth, newHeight);
+            if (cairo_surface_status(scaled) == CAIRO_STATUS_SUCCESS) {
+                cairo_t* scaleCr = cairo_create(scaled);
+                cairo_scale(scaleCr, scale, scale);
+                cairo_set_source_surface(scaleCr, thumbnail, 0, 0);
+                cairo_pattern_set_filter(cairo_get_source(scaleCr), CAIRO_FILTER_BEST);
+                cairo_paint(scaleCr);
+                cairo_destroy(scaleCr);
+                output = scaled;
+            }
+        }
+
         GError* err = nullptr;
-        const auto width = cairo_image_surface_get_width(thumbnail);
-        const auto height = cairo_image_surface_get_height(thumbnail);
-        const auto iconSize = 0.5 * std::min(width, height);
+        const auto outWidth = cairo_image_surface_get_width(output);
+        const auto outHeight = cairo_image_surface_get_height(output);
+        const auto iconSize = 0.5 * std::min(outWidth, outHeight);
 
         const auto svgPath = findAppIcon();
         RsvgHandle* handle = rsvg_handle_new_from_file(svgPath.c_str(), &err);
@@ -188,8 +220,8 @@ int main(int argc, char* argv[]) {
         } else {
             rsvg_handle_set_dpi(handle, 90);  // does the dpi matter for an icon overlay?
             // Render at bottom right
-            cairo_t* cr = cairo_create(thumbnail);
-            const RsvgRectangle viewport{width - iconSize, height - iconSize, iconSize, iconSize};
+            cairo_t* cr = cairo_create(output);
+            const RsvgRectangle viewport{outWidth - iconSize, outHeight - iconSize, iconSize, iconSize};
             GError* error = nullptr;
             rsvg_handle_render_document(handle, cr, &viewport, &error);
             if (error != nullptr) {
@@ -197,7 +229,7 @@ int main(int argc, char* argv[]) {
                 g_clear_error(&error);
             }
         }
-        cairo_surface_write_to_png(thumbnail, argv[2]);
+        cairo_surface_write_to_png(output, argv[2]);
     } else {
         // Cairo was unable to load the image, so fallback to writing the PNG data to disk.
         FILE* fp = fopen(argv[2], "wb");

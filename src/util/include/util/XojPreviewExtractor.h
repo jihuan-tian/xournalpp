@@ -18,9 +18,10 @@
 
 /**
  * Longest edge, in pixels, of the preview image embedded in a saved document.
- * File managers such as Dolphin scale this image for thumbnails, including HiDPI.
+ * Dolphin draws this image at the information-panel size in device pixels and
+ * blurs it when the stored image is smaller, so it has to cover a wide HiDPI panel.
  */
-constexpr int EMBEDDED_PREVIEW_SIZE = 512;
+constexpr int EMBEDDED_PREVIEW_SIZE = 2048;
 
 enum PreviewExtractResult {
 
