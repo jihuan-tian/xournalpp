@@ -11,7 +11,12 @@ Tool::Tool(std::string name, ToolType type, Color color, std::optional<std::arra
     setColor(color);
 }
 
-Tool::Tool(const Tool& t): name{t.name}, type{t.type}, thickness{t.thickness}, capabilities{t.capabilities} {
+Tool::Tool(const Tool& t):
+        name{t.name},
+        type{t.type},
+        thickness{t.thickness},
+        customThickness{t.customThickness},
+        capabilities{t.capabilities} {
     setColor(t.getColor());
 }
 

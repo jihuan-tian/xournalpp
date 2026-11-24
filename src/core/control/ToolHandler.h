@@ -210,6 +210,20 @@ public:
     void setEraserSize(ToolSize size);
     void setHighlighterSize(ToolSize size);
 
+    /**
+     * Smallest and largest eraser radius, in page points.
+     * Shift-drag adjusts the radius continuously inside this range.
+     */
+    static constexpr double ERASER_MIN_RADIUS = 0.5;
+    static constexpr double ERASER_MAX_RADIUS = 100.0;
+
+    /// Set the eraser radius in page points, overriding the preset sizes.
+    void setEraserThickness(double radius);
+    /// Current eraser radius in page points, whether it comes from a preset or from the slider.
+    double getEraserThickness() const;
+    /// True when the eraser radius was set continuously and no longer matches a preset.
+    bool hasCustomEraserThickness() const;
+
     void setPenFillEnabled(bool fill);
     bool getPenFillEnabled() const;
     void setPenFill(int alpha);

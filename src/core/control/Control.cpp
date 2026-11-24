@@ -1767,7 +1767,10 @@ void Control::toolChanged() {
 }
 
 void Control::eraserSizeChanged() {
-    this->actionDB->setActionState(Action::TOOL_ERASER_SIZE, toolHandler->getEraserSize());
+    const ToolSize size =
+            toolHandler->hasCustomEraserThickness() ? TOOL_SIZE_NONE : toolHandler->getEraserSize();
+    this->actionDB->setActionState(Action::TOOL_ERASER_SIZE, size);
+    this->actionDB->setActionState(Action::TOOL_ERASER_RADIUS, toolHandler->getEraserThickness());
 }
 
 void Control::penSizeChanged() { this->actionDB->setActionState(Action::TOOL_PEN_SIZE, toolHandler->getPenSize()); }
@@ -1785,7 +1788,11 @@ void Control::toolSizeChanged() {
         highlighterSizeChanged();
     }
 
-    this->actionDB->setActionState(Action::TOOL_SIZE, toolHandler->getSize());
+    if (toolHandler->getToolType() == TOOL_ERASER && toolHandler->hasCustomEraserThickness()) {
+        this->actionDB->setActionState(Action::TOOL_SIZE, TOOL_SIZE_NONE);
+    } else {
+        this->actionDB->setActionState(Action::TOOL_SIZE, toolHandler->getSize());
+    }
 
     getCursor()->updateCursor();
 }

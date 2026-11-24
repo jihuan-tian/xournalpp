@@ -440,60 +440,33 @@ void Stroke::setPressure(const std::vector<double>& pressure) {
 }
 
 /**
- * checks if the stroke is intersected by the eraser rectangle
+ * True when the stroke centerline comes within radius of (x, y).
  */
-auto Stroke::intersects(double x, double y, double halfEraserSize) const -> bool {
+auto Stroke::intersects(double x, double y, double radius) const -> bool {
     if (this->points.empty()) {
         return false;
     }
 
-    double x1 = x - halfEraserSize;
-    double x2 = x + halfEraserSize;
-    double y1 = y - halfEraserSize;
-    double y2 = y + halfEraserSize;
-
-    double lastX = points[0].x;
-    double lastY = points[0].y;
-    for (auto&& point: points) {
-        double px = point.x;
-        double py = point.y;
-
-        if (px >= x1 && py >= y1 && px <= x2 && py <= y2) {
+    const double radius2 = radius * radius;
+    double lastX = this->points[0].x;
+    double lastY = this->points[0].y;
+    for (auto&& point: this->points) {
+        const double dx = point.x - lastX;
+        const double dy = point.y - lastY;
+        const double len2 = dx * dx + dy * dy;
+        double t = 0.0;
+        if (len2 > 0.0) {
+            t = std::clamp(((x - lastX) * dx + (y - lastY) * dy) / len2, 0.0, 1.0);
+        }
+        const double projX = lastX + t * dx;
+        const double projY = lastY + t * dy;
+        const double distX = x - projX;
+        const double distY = y - projY;
+        if (distX * distX + distY * distY <= radius2) {
             return true;
         }
-
-        double len = hypot(px - lastX, py - lastY);
-        if (len >= halfEraserSize) {
-            /**
-             * The distance of the center of the eraser box to the line passing through (lastx, lasty) and (px, py)
-             */
-            double p = std::abs((x - lastX) * (lastY - py) + (y - lastY) * (px - lastX)) / len;
-
-            // If the distance p of the center of the eraser box to the (full) line is in the range,
-            // we check whether the eraser box is not too far from the line segment through the two points.
-
-            if (p <= halfEraserSize) {
-                double centerX = (lastX + px) / 2;
-                double centerY = (lastY + py) / 2;
-                double distance = hypot(x - centerX, y - centerY);
-
-                // For the above check we imagine a circle whose center is the mid point of the two points of the stroke
-                // and whose radius is half the length of the line segment plus half the diameter of the eraser box
-                // plus some small padding
-                // If the center of the eraser box lies within that circle then we consider it to be close enough
-
-                distance -= halfEraserSize * std::sqrt(2);
-
-                constexpr double PADDING = 0.1;
-
-                if (distance <= len / 2 + PADDING) {
-                    return true;
-                }
-            }
-        }
-
-        lastX = px;
-        lastY = py;
+        lastX = point.x;
+        lastY = point.y;
     }
 
     return false;
@@ -512,78 +485,62 @@ double Stroke::distanceTo(double x, double y) const {
     return distance;
 }
 
-/**
- * @brief Get the interval of length parameters where the line (pq) is in the rectangle.
- * @param p First point
- * @param q Second point
- * @param rectangle The rectangle
- * @return Optional interval res.
- * The line enters the rectangle at the point  res.min * p + (1 - res.min) * q
- * The line leaves the rectangle at the point  res.max * p + (1 - res.max) * q
- */
-static std::optional<Interval<double>> intersectLineWithRectangle(const Point& p, const Point& q,
-                                                                  const Rectangle<double>& rectangle) {
-    auto intersectLineWithStrip = [](double a1, double a2, double stripAMin, double stripWidth) {
-        // a1, a2 are coordinates along an axis orthogonal to the strip
-        double norm = 1.0 / (a2 - a1);
-        double t1 = (stripAMin - a1) * norm;
-        double t2 = t1 + stripWidth * norm;
-        return Interval<double>::getInterval(t1, t2);
-    };
-
-    if (p.x == q.x) {
-        if (p.y == q.y) {
-            // Single dot
-            return std::nullopt;
-        }
-        // Vertical segment
-        if (rectangle.x < p.x && p.x < rectangle.x + rectangle.width) {
-            return intersectLineWithStrip(p.y, q.y, rectangle.y, rectangle.height);
-        }
-        return std::nullopt;
-    }
-
-    if (p.y == q.y) {
-        // Horizontal segment
-        if (rectangle.y < p.y && p.y < rectangle.y + rectangle.height) {
-            return intersectLineWithStrip(p.x, q.x, rectangle.x, rectangle.width);
-        }
-        return std::nullopt;
-    }
-
-    // Generic case
-    Interval<double> verticalIntersections = intersectLineWithStrip(p.y, q.y, rectangle.y, rectangle.height);
-    Interval<double> horizontalIntersections = intersectLineWithStrip(p.x, q.x, rectangle.x, rectangle.width);
-
-    return verticalIntersections.intersect(horizontalIntersections);
+/// True when p lies inside or on the circle.
+static bool isInsideCircle(const Point& p, const Point& center, double radius) {
+    const double dx = p.x - center.x;
+    const double dy = p.y - center.y;
+    return dx * dx + dy * dy <= radius * radius;
 }
 
 /**
- * Same as intersectLineWithRectangle but only returns parameters between 0 and 1
- * (corresponding to points between p and q)
+ * @brief Interval of t where the line p + t * (q - p) lies inside the circle.
+ * Returns nullopt when the line misses the circle, or when p and q coincide.
  */
-static TinyVector<double, 2> intersectLineSegmentWithRectangle(const Point& p, const Point& q,
-                                                               const Rectangle<double>& rectangle) {
-    std::optional<Interval<double>> intersections = intersectLineWithRectangle(p, q, rectangle);
+static std::optional<Interval<double>> intersectLineWithCircle(const Point& p, const Point& q, const Point& center,
+                                                               double radius) {
+    const double dx = q.x - p.x;
+    const double dy = q.y - p.y;
+    const double a = dx * dx + dy * dy;
+    if (a == 0.0) {
+        return std::nullopt;
+    }
+    const double fx = p.x - center.x;
+    const double fy = p.y - center.y;
+    const double b = 2.0 * (fx * dx + fy * dy);
+    const double c = fx * fx + fy * fy - radius * radius;
+    const double disc = b * b - 4.0 * a * c;
+    if (disc < 0.0) {
+        return std::nullopt;
+    }
+    const double sqrtDisc = std::sqrt(disc);
+    const double inv = 0.5 / a;
+    return Interval<double>::getInterval((-b - sqrtDisc) * inv, (-b + sqrtDisc) * inv);
+}
 
-    if (intersections) {
-        TinyVector<double, 2> result;
-        if (intersections->min > 0.0 && intersections->min <= 1.0) {
-            result.emplace_back(intersections->min);
-        }
-        if (intersections->max > 0.0 && intersections->max <= 1.0) {
-            result.emplace_back(intersections->max);
-        }
-        return result;
+/**
+ * Parameters in (0, 1] where the segment from p to q crosses the circle boundary.
+ */
+static TinyVector<double, 2> intersectLineSegmentWithCircle(const Point& p, const Point& q, const Point& center,
+                                                            double radius) {
+    std::optional<Interval<double>> intersections = intersectLineWithCircle(p, q, center, radius);
+    if (!intersections) {
+        return {};
     }
 
-    return {};
+    TinyVector<double, 2> result;
+    if (intersections->min > 0.0 && intersections->min <= 1.0) {
+        result.emplace_back(intersections->min);
+    }
+    if (intersections->max > 0.0 && intersections->max <= 1.0 && intersections->max != intersections->min) {
+        result.emplace_back(intersections->max);
+    }
+    return result;
 }
 
 auto Stroke::intersectWithPaddedBox(const PaddedBox& box) const -> IntersectionParametersContainer {
     auto pointCount = this->points.size();
     if (pointCount < 2) {
-        if (pointCount == 1 && this->points.back().isInside(box.getInnerRectangle())) {
+        if (pointCount == 1 && isInsideCircle(this->points.back(), box.center, box.halfSize)) {
             IntersectionParametersContainer result;
             result.emplace_back(0U, 0.0);
             result.emplace_back(0U, 0.0);
@@ -598,8 +555,9 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
         -> IntersectionParametersContainer {
     xoj_assert(firstIndex <= lastIndex && lastIndex < this->points.size() - 1);
 
-    const auto innerBox = box.getInnerRectangle();
-    const auto outerBox = box.getOuterRectangle();
+    const Point& center = box.center;
+    const double innerRadius = box.halfSize;
+    const double outerRadius = box.halfSizeWithPadding;
 
     struct Flags {
         bool isInsideOuter;
@@ -608,13 +566,13 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
     };
 
     auto initializeFlagsFromHalfTangentAtFirstKnot =
-            [&outerBox, &innerBox](const Point& firstKnot, const Point& halfTangentControlPoint) -> Flags {
-        if (firstKnot.isInside(innerBox)) {
+            [&center, innerRadius, outerRadius](const Point& firstKnot, const Point& halfTangentControlPoint) -> Flags {
+        if (isInsideCircle(firstKnot, center, innerRadius)) {
             return {true, true, false};
-        } else if (firstKnot.isInside(outerBox)) {
+        } else if (isInsideCircle(firstKnot, center, outerRadius)) {
             std::optional<Interval<double>> innerLineIntersections =
-                    intersectLineWithRectangle(firstKnot, halfTangentControlPoint, innerBox);
-            // If the half tangent goes towards to inner box, say we've been inside the inner box
+                    intersectLineWithCircle(firstKnot, halfTangentControlPoint, center, innerRadius);
+            // The inner disk lies behind the first knot, so the stroke has already passed through it.
             return {true, innerLineIntersections && innerLineIntersections.value().max <= 0.0, false};
         }
         return {false, false, false};
@@ -641,7 +599,7 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
         result.emplace_back(firstIndex, 0.0);
     }
 
-    auto processSegment = [&flags, &outerBox, &innerBox, &result DEBUG_ERASER(COMMA & debugstream)](
+    auto processSegment = [&flags, &center, innerRadius, outerRadius, &result DEBUG_ERASER(COMMA & debugstream)](
                                   const Point& firstKnot, const Point& secondKnot, size_t index) {
         DEBUG_ERASER(debugstream << "| * Segment " << std::setw(3) << index << std::setprecision(5);
                      debugstream << ": (" << std::setw(9) << firstKnot.x;
@@ -652,10 +610,11 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
                                  << std::setprecision(17);  // High precision to detect numerical inaccuracy
         )
 
-        auto outerIntersections = intersectLineSegmentWithRectangle(firstKnot, secondKnot, outerBox);
-        if (!outerIntersections.empty() || firstKnot.isInside(outerBox) || secondKnot.isInside(outerBox)) {
-            // Some part of the segment lies inside the padded box
-            auto innerIntersections = intersectLineSegmentWithRectangle(firstKnot, secondKnot, innerBox);
+        auto outerIntersections = intersectLineSegmentWithCircle(firstKnot, secondKnot, center, outerRadius);
+        if (!outerIntersections.empty() || isInsideCircle(firstKnot, center, outerRadius) ||
+            isInsideCircle(secondKnot, center, outerRadius)) {
+            // Some part of the segment lies inside the padded disk
+            auto innerIntersections = intersectLineSegmentWithCircle(firstKnot, secondKnot, center, innerRadius);
             auto itInner = innerIntersections.begin();
             auto itInnerEnd = innerIntersections.end();
 
@@ -675,7 +634,7 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
                     double t = 0.5 * outerIntersections.front();
                     p = firstKnot.relativeLineTo(secondKnot, t);
                 }
-                if (p.isInside(outerBox) != (result.size() % 2 != 0)) {
+                if (isInsideCircle(p, center, outerRadius) != (result.size() % 2 != 0)) {
                     // The stroke bounced back on the box border and never got in or out
                     // Remove the last intersection point
                     xoj_assert(!result.empty());
@@ -725,10 +684,10 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
     }
 
     auto isHalfTangentAtLastKnotGoingTowardInnerBox =
-            [&innerBox, &outerBox](const Point& lastKnot, const Point& halfTangentControlPoint) -> bool {
-        xoj_assert(lastKnot.isInside(outerBox));
+            [&center, innerRadius, outerRadius](const Point& lastKnot, const Point& halfTangentControlPoint) -> bool {
+        xoj_assert(isInsideCircle(lastKnot, center, outerRadius));
         std::optional<Interval<double>> innerLineIntersections =
-                intersectLineWithRectangle(lastKnot, halfTangentControlPoint, innerBox);
+                intersectLineWithCircle(lastKnot, halfTangentControlPoint, center, innerRadius);
         return innerLineIntersections && innerLineIntersections.value().max < 0.0;
     };
 
@@ -745,7 +704,7 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
 
         DEBUG_ERASER(debugstream << "|  |  Odd number of intersection points" << std::endl;)
 
-        if (lastPoint.isInside(outerBox)) {
+        if (isInsideCircle(lastPoint, center, outerRadius)) {
             if (flags.wentInsideInner || isHalfTangentAtLastKnotGoingTowardInnerBox(lastPoint, segmentIt.first())) {
                 result.emplace_back(index - 1, 1.0);
                 DEBUG_ERASER(debugstream << "|  |  ** pushing   (" << std::setw(3) << result.back().index << ","
@@ -761,7 +720,7 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
     }
 
     // Returns true if the result is inconsistent
-    auto checkSanity = [&outerBox,
+    auto checkSanity = [&center, outerRadius,
                         this DEBUG_ERASER(COMMA & debugstream)](const IntersectionParametersContainer& res) -> bool {
         for (auto it1 = res.begin(), it2 = std::next(it1), end = res.end(); it1 != end; it1 += 2, it2 += 2) {
             const auto& paramStart = *it1;
@@ -779,7 +738,7 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
                 DEBUG_ERASER(debugstream << "| -------- getting point (" << (paramStart.index + paramLast.index + 1) / 2
                                          << " ; 0.0)" << std::endl;)
             }
-            if (!testPoint.isInside(outerBox)) {
+            if (!isInsideCircle(testPoint, center, outerRadius)) {
                 DEBUG_ERASER(debugstream << "| --------- It is not in !!" << std::endl;)
                 return true;
             }
@@ -791,15 +750,10 @@ auto Stroke::intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex, siz
     inconsistentResults = inconsistentResults || checkSanity(result);
 
     if (inconsistentResults) {
-        DEBUG_ERASER(debugstream << "| Inconsistent results!\n"; debugstream << "| * innerBox = (";
-                     debugstream << std::setprecision(5); debugstream << std::setw(9) << innerBox.x << " ; ";
-                     debugstream << std::setw(9) << innerBox.x + innerBox.width << ") -- (";
-                     debugstream << std::setw(9) << innerBox.y << " ; ";
-                     debugstream << std::setw(9) << innerBox.y + innerBox.height << ")\n";
-                     debugstream << "| * outerBox = ("; debugstream << std::setw(9) << outerBox.x << " ; ";
-                     debugstream << std::setw(9) << outerBox.x + outerBox.width << ") -- (";
-                     debugstream << std::setw(9) << outerBox.y << " ; ";
-                     debugstream << std::setw(9) << outerBox.y + outerBox.height << ")\n";
+        DEBUG_ERASER(debugstream << "| Inconsistent results!\n"; debugstream << "| * center = (";
+                     debugstream << std::setprecision(5); debugstream << std::setw(9) << center.x << " ; ";
+                     debugstream << std::setw(9) << center.y << ") innerRadius = " << innerRadius;
+                     debugstream << " outerRadius = " << outerRadius << "\n";
                      std::cout << debugstream.str();)
         return {};
     }

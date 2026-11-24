@@ -151,7 +151,11 @@ public:
     const LineStyle& getLineStyle() const;
     void setLineStyle(const LineStyle& style);
 
-    bool intersects(double x, double y, double halfEraserSize) const;
+    /**
+     * @brief True when the stroke centerline comes within radius of (x, y).
+     * The test is a disk, not a square.
+     */
+    bool intersects(double x, double y, double radius) const;
     /**
      * Computes the actual distance between (x,y) and the stroke, taking thickness into account
      * If (x,y) is within the painted area corresponding to the stroke, the return value will be 0.
@@ -159,15 +163,14 @@ public:
     double distanceTo(double x, double y) const override;
 
     /**
-     * @brief Find the parameters within a certain interval corresponding to the points where the stroke crosses in
-     * or out of the given box with its padding. Intersections are ignored if the stroke does not hit the small box
-     * itself.
-     * @param box The padded box
+     * @brief Find the parameters where the stroke crosses the padded eraser disk.
+     * Intersections with the outer disk are ignored unless the stroke also hits the inner disk.
+     * @param box The padded eraser. halfSize and halfSizeWithPadding are radii.
      * @param firstIndex The lower bound of the interval
      * @param lastIndex The upper bound of the interval
      * @return The parameters (sorted). The size of the returned vector is always even.
      *
-     * Warning: this function does not test if the box intersects the stroke's bounding box.
+     * Warning: this function does not test if the disk intersects the stroke's bounding box.
      * For optimization purposes, this test should be performed beforehand by the caller.
      */
     IntersectionParametersContainer intersectWithPaddedBox(const PaddedBox& box, size_t firstIndex,

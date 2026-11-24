@@ -729,6 +729,16 @@ struct ActionProperties<Action::TOOL_ERASER_SIZE> {
 };
 
 template <>
+struct ActionProperties<Action::TOOL_ERASER_RADIUS> {
+    using state_type = double;
+    static state_type initialState(Control* ctrl) { return ctrl->getToolHandler()->getEraserThickness(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        ctrl->getToolHandler()->setEraserThickness(g_variant_get_double(p));
+    }
+};
+
+template <>
 struct ActionProperties<Action::TOOL_ERASER_TYPE> {
     using state_type = EraserType;
     using parameter_type = state_type;
