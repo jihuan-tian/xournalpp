@@ -38,7 +38,7 @@
 #include "SpacerItem.h"
 #include "StylePopoverFactory.h"     // for ToolButtonWithStylePopover
 #include "ToolButton.h"              // for ToolButton
-#include "ToolEraserSlider.h"        // for ToolEraserSlider
+#include "ToolThicknessSlider.h"     // for ToolThicknessSlider
 #include "ToolPageLayer.h"           // for ToolPageLayer
 #include "ToolPageSpinner.h"         // for ToolPageSpinner
 #include "ToolPdfCombocontrol.h"     // for ToolPdfCombocontrol
@@ -372,6 +372,10 @@ void ToolMenuHandler::initToolItems() {
                                                     {_("dotted"), iconName("line-style-dot"), "dot"}});
     emplaceCustomItemWithTargetAndMenu("PEN", Cat::TOOLS, Action::SELECT_TOOL, TOOL_PEN, "tool-pencil", _("Pen"),
                                        this->penLineStylePopover.get());
+    emplaceItem<ToolThicknessSlider>("PEN_THICKNESS", iconNameHelper, *control->getActionDatabase(),
+                                     Action::TOOL_PEN_THICKNESS, ToolHandler::PEN_MIN_THICKNESS,
+                                     ToolHandler::PEN_MAX_THICKNESS, "tool-pencil", _("Pen thickness"),
+                                     _("Pen Thickness"));
 
     this->eraserTypePopover = std::make_unique<StylePopoverFactory>(
             Action::TOOL_ERASER_TYPE,
@@ -380,7 +384,10 @@ void ToolMenuHandler::initToolItems() {
                                                     {_("delete stroke"), ERASER_TYPE_DELETE_STROKE}});
     emplaceCustomItemWithTargetAndMenu("ERASER", Cat::TOOLS, Action::SELECT_TOOL, TOOL_ERASER, "tool-eraser",
                                        _("Eraser"), this->eraserTypePopover.get());
-    emplaceItem<ToolEraserSlider>("ERASER_RADIUS", iconNameHelper, *control->getActionDatabase());
+    emplaceItem<ToolThicknessSlider>("ERASER_RADIUS", iconNameHelper, *control->getActionDatabase(),
+                                     Action::TOOL_ERASER_RADIUS, ToolHandler::ERASER_MIN_RADIUS,
+                                     ToolHandler::ERASER_MAX_RADIUS, "tool-eraser", _("Eraser radius"),
+                                     _("Eraser Radius"));
 
     // Add individual line styles as toolbar items
     emplaceCustomItemWithTarget("PLAIN", Cat::TOOLS, Action::TOOL_PEN_LINE_STYLE, "plain", "line-style-plain-with-pen",
@@ -395,6 +402,10 @@ void ToolMenuHandler::initToolItems() {
 
     emplaceCustomItemWithTarget("HIGHLIGHTER", Cat::TOOLS, Action::SELECT_TOOL, TOOL_HIGHLIGHTER, "tool-highlighter",
                                 _("Highlighter"));
+    emplaceItem<ToolThicknessSlider>("HIGHLIGHTER_THICKNESS", iconNameHelper, *control->getActionDatabase(),
+                                     Action::TOOL_HIGHLIGHTER_THICKNESS, ToolHandler::HIGHLIGHTER_MIN_THICKNESS,
+                                     ToolHandler::HIGHLIGHTER_MAX_THICKNESS, "tool-highlighter",
+                                     _("Highlighter thickness"), _("Highlighter Thickness"));
 
     emplaceCustomItemWithTarget("TEXT", Cat::TOOLS, Action::SELECT_TOOL, TOOL_TEXT, "tool-text", _("Text"));
     emplaceCustomItemWithTarget("LINK", Cat::TOOLS, Action::SELECT_TOOL, TOOL_LINK, "tool-link", _("Add/Edit Link"));

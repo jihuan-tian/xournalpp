@@ -99,11 +99,30 @@ auto PenInputHandler::actionStart(InputEvent const& event) -> bool {
 
     ToolHandler* toolHandler = this->inputContext->getToolHandler();
 
-    // Shift-drag resizes the eraser. Do this before the outside-page hand fallback so it also works in the margin.
-    if (toolHandler->getToolType() == TOOL_ERASER && (event.state & GDK_SHIFT_MASK)) {
-        this->resizingEraser = true;
+    // Shift-drag resizes the pen, eraser, or highlighter. Do this before the outside-page hand fallback so it also
+    // works in the margin. Shape tools still use Shift to constrain the figure.
+    const ToolType resizeTool = toolHandler->getToolType();
+    const bool shiftDown = (event.state & GDK_SHIFT_MASK) != 0;
+    bool resizeThickness = false;
+    if (shiftDown && resizeTool == TOOL_ERASER) {
+        resizeThickness = true;
+    } else if (shiftDown && (resizeTool == TOOL_PEN || resizeTool == TOOL_HIGHLIGHTER)) {
+        const DrawingType drawingType = toolHandler->getDrawingType();
+        resizeThickness = drawingType != DRAWING_TYPE_LINE && drawingType != DRAWING_TYPE_RECTANGLE &&
+                          drawingType != DRAWING_TYPE_ELLIPSE && drawingType != DRAWING_TYPE_ARROW &&
+                          drawingType != DRAWING_TYPE_DOUBLE_ARROW && drawingType != DRAWING_TYPE_COORDINATE_SYSTEM;
+    }
+    if (resizeThickness) {
+        double minThickness = ToolHandler::ERASER_MIN_RADIUS;
+        if (resizeTool == TOOL_PEN) {
+            minThickness = ToolHandler::PEN_MIN_THICKNESS;
+        } else if (resizeTool == TOOL_HIGHLIGHTER) {
+            minThickness = ToolHandler::HIGHLIGHTER_MIN_THICKNESS;
+        }
+        this->resizingThickness = true;
+        this->resizeTool = resizeTool;
         this->resizeOriginX = event.relative.x;
-        this->resizeStartRadius = std::max(toolHandler->getThickness(), ToolHandler::ERASER_MIN_RADIUS);
+        this->resizeStartThickness = std::max(toolHandler->getThickness(), minThickness);
         this->inputRunning = true;
         this->penInWidget = true;
         return true;
@@ -279,12 +298,19 @@ bool PenInputHandler::isCurrentTapSelection(InputEvent const& event) const {
 }
 
 auto PenInputHandler::actionMotion(InputEvent const& event) -> bool {
-    if (this->resizingEraser) {
-        // 100 screen pixels doubles or halves the radius.
+    if (this->resizingThickness) {
+        // 100 screen pixels doubles or halves the thickness.
         constexpr double pixelsPerDoubling = 100.0;
         const double dx = event.relative.x - this->resizeOriginX;
-        const double radius = this->resizeStartRadius * std::pow(2.0, dx / pixelsPerDoubling);
-        this->inputContext->getToolHandler()->setEraserThickness(radius);
+        const double thickness = this->resizeStartThickness * std::pow(2.0, dx / pixelsPerDoubling);
+        ToolHandler* toolHandler = this->inputContext->getToolHandler();
+        if (this->resizeTool == TOOL_PEN) {
+            toolHandler->setPenThickness(thickness);
+        } else if (this->resizeTool == TOOL_ERASER) {
+            toolHandler->setEraserThickness(thickness);
+        } else if (this->resizeTool == TOOL_HIGHLIGHTER) {
+            toolHandler->setHighlighterThickness(thickness);
+        }
         this->updateLastEvent(event);
         return true;
     }
@@ -439,8 +465,9 @@ auto PenInputHandler::actionEnd(InputEvent const& event) -> bool {
 
     cursor->setMouseDown(false);
 
-    if (this->resizingEraser) {
-        this->resizingEraser = false;
+    if (this->resizingThickness) {
+        this->resizingThickness = false;
+        this->resizeTool = TOOL_NONE;
         this->inputStartedOutsidePageArea = false;
         this->inputRunning = false;
         this->sequenceStartPage = nullptr;

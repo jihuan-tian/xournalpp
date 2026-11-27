@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "control/ToolEnums.h"             // for ToolType
 #include "gui/inputdevices/InputEvents.h"  // for InputEvent
 #include "util/Point.h"
 
@@ -71,12 +72,14 @@ protected:
     bool inputStartedOutsidePageArea = false;
 
     /**
-     * Shift-drag while the eraser is active changes its radius instead of erasing.
-     * Horizontal movement scales the radius exponentially, the same way Krita changes brush size.
+     * Shift-drag while the pen, eraser, or highlighter is active changes its thickness instead of drawing.
+     * Horizontal movement scales the thickness exponentially, the same way Krita changes brush size.
+     * Shape tools keep Shift for constraining the figure, so they do not enter this mode.
      */
-    bool resizingEraser = false;
+    bool resizingThickness = false;
+    ToolType resizeTool = TOOL_NONE;
     double resizeOriginX = 0.0;
-    double resizeStartRadius = 0.0;
+    double resizeStartThickness = 0.0;
 
     /**
      * Flag whether pen is within the widget

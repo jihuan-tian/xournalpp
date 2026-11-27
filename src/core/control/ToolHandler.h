@@ -211,11 +211,23 @@ public:
     void setHighlighterSize(ToolSize size);
 
     /**
-     * Smallest and largest eraser radius, in page points.
-     * Shift-drag adjusts the radius continuously inside this range.
+     * Continuous thickness limits, in page points.
+     * Shift-drag and the toolbar sliders stay inside these ranges.
+     * Preset sizes sit inside the range, so a preset can still be selected afterwards.
      */
+    static constexpr double PEN_MIN_THICKNESS = 0.2;
+    static constexpr double PEN_MAX_THICKNESS = 20.0;
     static constexpr double ERASER_MIN_RADIUS = 0.5;
     static constexpr double ERASER_MAX_RADIUS = 100.0;
+    static constexpr double HIGHLIGHTER_MIN_THICKNESS = 0.5;
+    static constexpr double HIGHLIGHTER_MAX_THICKNESS = 80.0;
+
+    /// Set the pen thickness in page points, overriding the preset sizes.
+    void setPenThickness(double thickness);
+    /// Current pen thickness in page points, whether it comes from a preset or from the slider.
+    double getPenThickness() const;
+    /// True when the pen thickness was set continuously and no longer matches a preset.
+    bool hasCustomPenThickness() const;
 
     /// Set the eraser radius in page points, overriding the preset sizes.
     void setEraserThickness(double radius);
@@ -223,6 +235,13 @@ public:
     double getEraserThickness() const;
     /// True when the eraser radius was set continuously and no longer matches a preset.
     bool hasCustomEraserThickness() const;
+
+    /// Set the highlighter thickness in page points, overriding the preset sizes.
+    void setHighlighterThickness(double thickness);
+    /// Current highlighter thickness in page points, whether it comes from a preset or from the slider.
+    double getHighlighterThickness() const;
+    /// True when the highlighter thickness was set continuously and no longer matches a preset.
+    bool hasCustomHighlighterThickness() const;
 
     void setPenFillEnabled(bool fill);
     bool getPenFillEnabled() const;
@@ -424,6 +443,11 @@ private:
      * @return Tool*
      */
     Tool* getSelectedTool(SelectedTool selectedTool) const;
+
+    /// Store a continuous thickness on the canonical tool, and on the active tool when it is the same type.
+    void setCustomThickness(ToolType type, double thickness);
+    bool hasCustomThickness(ToolType type) const;
+    double getCustomOrPresetThickness(ToolType type) const;
 
     // active Tool which is used for drawing
     Tool* activeTool = nullptr;

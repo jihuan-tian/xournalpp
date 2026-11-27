@@ -1767,16 +1767,22 @@ void Control::toolChanged() {
 }
 
 void Control::eraserSizeChanged() {
-    const ToolSize size =
-            toolHandler->hasCustomEraserThickness() ? TOOL_SIZE_NONE : toolHandler->getEraserSize();
+    const ToolSize size = toolHandler->hasCustomEraserThickness() ? TOOL_SIZE_NONE : toolHandler->getEraserSize();
     this->actionDB->setActionState(Action::TOOL_ERASER_SIZE, size);
     this->actionDB->setActionState(Action::TOOL_ERASER_RADIUS, toolHandler->getEraserThickness());
 }
 
-void Control::penSizeChanged() { this->actionDB->setActionState(Action::TOOL_PEN_SIZE, toolHandler->getPenSize()); }
+void Control::penSizeChanged() {
+    const ToolSize size = toolHandler->hasCustomPenThickness() ? TOOL_SIZE_NONE : toolHandler->getPenSize();
+    this->actionDB->setActionState(Action::TOOL_PEN_SIZE, size);
+    this->actionDB->setActionState(Action::TOOL_PEN_THICKNESS, toolHandler->getPenThickness());
+}
 
 void Control::highlighterSizeChanged() {
-    this->actionDB->setActionState(Action::TOOL_HIGHLIGHTER_SIZE, toolHandler->getHighlighterSize());
+    const ToolSize size =
+            toolHandler->hasCustomHighlighterThickness() ? TOOL_SIZE_NONE : toolHandler->getHighlighterSize();
+    this->actionDB->setActionState(Action::TOOL_HIGHLIGHTER_SIZE, size);
+    this->actionDB->setActionState(Action::TOOL_HIGHLIGHTER_THICKNESS, toolHandler->getHighlighterThickness());
 }
 
 void Control::toolSizeChanged() {
@@ -1788,11 +1794,11 @@ void Control::toolSizeChanged() {
         highlighterSizeChanged();
     }
 
-    if (toolHandler->getToolType() == TOOL_ERASER && toolHandler->hasCustomEraserThickness()) {
-        this->actionDB->setActionState(Action::TOOL_SIZE, TOOL_SIZE_NONE);
-    } else {
-        this->actionDB->setActionState(Action::TOOL_SIZE, toolHandler->getSize());
-    }
+    const ToolType type = toolHandler->getToolType();
+    const bool customThickness = (type == TOOL_PEN && toolHandler->hasCustomPenThickness()) ||
+                                 (type == TOOL_ERASER && toolHandler->hasCustomEraserThickness()) ||
+                                 (type == TOOL_HIGHLIGHTER && toolHandler->hasCustomHighlighterThickness());
+    this->actionDB->setActionState(Action::TOOL_SIZE, customThickness ? TOOL_SIZE_NONE : toolHandler->getSize());
 
     getCursor()->updateCursor();
 }

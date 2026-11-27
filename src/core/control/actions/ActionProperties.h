@@ -713,6 +713,16 @@ template <>
 struct ActionProperties<Action::TOOL_PEN_FILL_OPACITY> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->selectAlpha(OPACITY_FILL_PEN); }
 };
+
+template <>
+struct ActionProperties<Action::TOOL_PEN_THICKNESS> {
+    using state_type = double;
+    static state_type initialState(Control* ctrl) { return ctrl->getToolHandler()->getPenThickness(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        ctrl->getToolHandler()->setPenThickness(g_variant_get_double(p));
+    }
+};
 // Eraser submenu
 template <>
 struct ActionProperties<Action::TOOL_ERASER_SIZE> {
@@ -781,6 +791,16 @@ struct ActionProperties<Action::TOOL_HIGHLIGHTER_FILL> {
 template <>
 struct ActionProperties<Action::TOOL_HIGHLIGHTER_FILL_OPACITY> {
     static void callback(GSimpleAction*, GVariant*, Control* ctrl) { ctrl->selectAlpha(OPACITY_FILL_HIGHLIGHTER); }
+};
+
+template <>
+struct ActionProperties<Action::TOOL_HIGHLIGHTER_THICKNESS> {
+    using state_type = double;
+    static state_type initialState(Control* ctrl) { return ctrl->getToolHandler()->getHighlighterThickness(); }
+    static void callback(GSimpleAction* ga, GVariant* p, Control* ctrl) {
+        g_simple_action_set_state(ga, p);
+        ctrl->getToolHandler()->setHighlighterThickness(g_variant_get_double(p));
+    }
 };
 
 template <>

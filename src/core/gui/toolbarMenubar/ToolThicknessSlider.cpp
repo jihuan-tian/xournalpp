@@ -1,11 +1,10 @@
-#include "ToolEraserSlider.h"
+#include "ToolThicknessSlider.h"
 
 #include <cmath>
 #include <utility>
 
 #include <glib.h>
 
-#include "control/ToolHandler.h"
 #include "control/actions/ActionDatabase.h"
 #include "util/GVariantTemplate.h"
 #include "util/gtk4_helper.h"
@@ -18,22 +17,24 @@ namespace {
 constexpr int FINE_STEP_COUNT = 200;
 constexpr int COARSE_STEP_COUNT = 20;
 
-constexpr auto SLIDER_RANGE = AbstractSliderItem::SliderRange{
-        ToolHandler::ERASER_MIN_RADIUS, ToolHandler::ERASER_MAX_RADIUS, FINE_STEP_COUNT, COARSE_STEP_COUNT};
-
 void setLabelFromAction(GObject* action, GtkLabel* label) {
     xoj::util::GVariantSPtr state(g_action_get_state(G_ACTION(action)), xoj::util::adopt);
-    const double radius = getGVariantValue<double>(state.get());
-    gtk_label_set_text(label, ToolEraserSlider::formatRadius(radius).c_str());
+    const double thickness = getGVariantValue<double>(state.get());
+    gtk_label_set_text(label, ToolThicknessSlider::formatThickness(thickness).c_str());
 }
 }  // namespace
 
-ToolEraserSlider::ToolEraserSlider(std::string id, IconNameHelper iconNameHelper, ActionDatabase& db):
-        AbstractSliderItem{std::move(id), Category::TOOLS, SLIDER_RANGE, db.getAction(Action::TOOL_ERASER_RADIUS)},
-        iconName(iconNameHelper.iconName("tool-eraser")) {}
+ToolThicknessSlider::ToolThicknessSlider(std::string id, IconNameHelper iconNameHelper, ActionDatabase& db,
+                                         Action action, double min, double max, const char* icon, std::string tooltip,
+                                         std::string displayName):
+        AbstractSliderItem{std::move(id), Category::TOOLS, SliderRange{min, max, FINE_STEP_COUNT, COARSE_STEP_COUNT},
+                           db.getAction(action)},
+        iconName(iconNameHelper.iconName(icon)),
+        tooltip(std::move(tooltip)),
+        displayName(std::move(displayName)) {}
 
-auto ToolEraserSlider::createItem(bool horizontal) -> xoj::util::WidgetSPtr {
-    auto scale = SliderItemCreationHelper<ToolEraserSlider>::createItem(this, horizontal);
+auto ToolThicknessSlider::createItem(bool horizontal) -> xoj::util::WidgetSPtr {
+    auto scale = SliderItemCreationHelper<ToolThicknessSlider>::createItem(this, horizontal);
     if (horizontal) {
         gtk_widget_set_size_request(scale.get(), 160, -1);
         gtk_widget_set_valign(scale.get(), GTK_ALIGN_CENTER);
@@ -56,26 +57,26 @@ auto ToolEraserSlider::createItem(bool horizontal) -> xoj::util::WidgetSPtr {
     xoj::util::WidgetSPtr box(gtk_box_new(orientation, 6), xoj::util::adopt);
     gtk_box_append(GTK_BOX(box.get()), scale.get());
     gtk_box_append(GTK_BOX(box.get()), valueLabel);
-    gtk_widget_set_tooltip_text(box.get(), _("Eraser radius"));
+    gtk_widget_set_tooltip_text(box.get(), this->tooltip.c_str());
     return box;
 }
 
-auto ToolEraserSlider::getToolDisplayName() const -> std::string { return _("Eraser Radius"); }
+auto ToolThicknessSlider::getToolDisplayName() const -> std::string { return this->displayName; }
 
-auto ToolEraserSlider::getNewToolIcon() const -> GtkWidget* {
+auto ToolThicknessSlider::getNewToolIcon() const -> GtkWidget* {
     return gtk_image_new_from_icon_name(iconName.c_str(), GTK_ICON_SIZE_SMALL_TOOLBAR);
 }
 
-auto ToolEraserSlider::scaleFunction(double radius) -> double { return std::log(radius); }
+auto ToolThicknessSlider::scaleFunction(double thickness) -> double { return std::log(thickness); }
 
-auto ToolEraserSlider::scaleInverseFunction(double sliderValue) -> double { return std::exp(sliderValue); }
+auto ToolThicknessSlider::scaleInverseFunction(double sliderValue) -> double { return std::exp(sliderValue); }
 
-auto ToolEraserSlider::formatRadius(double radius) -> std::string {
+auto ToolThicknessSlider::formatThickness(double thickness) -> std::string {
     char buf[32];
-    if (radius >= 10.0) {
-        g_snprintf(buf, sizeof(buf), "%.1f pt", radius);
+    if (thickness >= 10.0) {
+        g_snprintf(buf, sizeof(buf), "%.1f pt", thickness);
     } else {
-        g_snprintf(buf, sizeof(buf), "%.2f pt", radius);
+        g_snprintf(buf, sizeof(buf), "%.2f pt", thickness);
     }
     return buf;
 }

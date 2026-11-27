@@ -73,7 +73,7 @@ private:
 
     /**
      * Continuous thickness, in page points. When set, it overrides the preset size.
-     * Used by the eraser so its radius can change smoothly.
+     * Used by the pen, eraser, and highlighter so their size can change smoothly.
      */
     std::optional<double> customThickness;
 

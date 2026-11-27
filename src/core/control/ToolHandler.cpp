@@ -244,10 +244,61 @@ auto ToolHandler::getEraserSize() const -> ToolSize { return tools[TOOL_ERASER -
 
 auto ToolHandler::getHighlighterSize() const -> ToolSize { return tools[TOOL_HIGHLIGHTER - TOOL_PEN]->getSize(); }
 
-void ToolHandler::setPenSize(ToolSize size) {
-    this->tools[TOOL_PEN - TOOL_PEN]->setSize(size);
+namespace {
+struct ThicknessLimits {
+    double min;
+    double max;
+};
 
+auto thicknessLimits(ToolType type) -> std::optional<ThicknessLimits> {
+    switch (type) {
+        case TOOL_PEN:
+            return ThicknessLimits{ToolHandler::PEN_MIN_THICKNESS, ToolHandler::PEN_MAX_THICKNESS};
+        case TOOL_ERASER:
+            return ThicknessLimits{ToolHandler::ERASER_MIN_RADIUS, ToolHandler::ERASER_MAX_RADIUS};
+        case TOOL_HIGHLIGHTER:
+            return ThicknessLimits{ToolHandler::HIGHLIGHTER_MIN_THICKNESS, ToolHandler::HIGHLIGHTER_MAX_THICKNESS};
+        default:
+            return std::nullopt;
+    }
+}
+}  // namespace
+
+void ToolHandler::setCustomThickness(ToolType type, double thickness) {
+    const auto limits = thicknessLimits(type);
+    xoj_assert(limits.has_value());
+    thickness = std::clamp(thickness, limits->min, limits->max);
+    Tool* tool = this->tools[type - TOOL_PEN].get();
+    tool->customThickness = thickness;
+    if (this->activeTool->type == type && this->activeTool != tool) {
+        this->activeTool->customThickness = thickness;
+    }
+    if (this->activeTool->type == type) {
+        this->stateChangeListener->toolSizeChanged();
+    }
+}
+
+auto ToolHandler::hasCustomThickness(ToolType type) const -> bool {
+    return this->tools[type - TOOL_PEN]->customThickness.has_value();
+}
+
+auto ToolHandler::getCustomOrPresetThickness(ToolType type) const -> double {
+    const Tool* tool = this->tools[type - TOOL_PEN].get();
+    if (tool->customThickness) {
+        return *tool->customThickness;
+    }
+    return tool->getThickness(tool->getSize());
+}
+
+void ToolHandler::setPenSize(ToolSize size) {
+    Tool* pen = this->tools[TOOL_PEN - TOOL_PEN].get();
+    pen->customThickness.reset();
+    pen->setSize(size);
     if (this->activeTool->type == TOOL_PEN) {
+        this->activeTool->customThickness.reset();
+        if (this->activeTool != pen) {
+            this->activeTool->setSize(size);
+        }
         this->stateChangeListener->toolSizeChanged();
     }
 }
@@ -265,37 +316,38 @@ void ToolHandler::setEraserSize(ToolSize size) {
     }
 }
 
-void ToolHandler::setEraserThickness(double radius) {
-    radius = std::clamp(radius, ERASER_MIN_RADIUS, ERASER_MAX_RADIUS);
-    Tool* eraser = this->tools[TOOL_ERASER - TOOL_PEN].get();
-    eraser->customThickness = radius;
-    if (this->activeTool->type == TOOL_ERASER && this->activeTool != eraser) {
-        this->activeTool->customThickness = radius;
-    }
-    if (this->activeTool->type == TOOL_ERASER) {
-        this->stateChangeListener->toolSizeChanged();
-    }
-}
+void ToolHandler::setPenThickness(double thickness) { setCustomThickness(TOOL_PEN, thickness); }
 
-auto ToolHandler::hasCustomEraserThickness() const -> bool {
-    return this->tools[TOOL_ERASER - TOOL_PEN]->customThickness.has_value();
-}
+auto ToolHandler::getPenThickness() const -> double { return getCustomOrPresetThickness(TOOL_PEN); }
 
-auto ToolHandler::getEraserThickness() const -> double {
-    const Tool* eraser = this->tools[TOOL_ERASER - TOOL_PEN].get();
-    if (eraser->customThickness) {
-        return *eraser->customThickness;
-    }
-    return eraser->getThickness(eraser->getSize());
-}
+auto ToolHandler::hasCustomPenThickness() const -> bool { return hasCustomThickness(TOOL_PEN); }
+
+void ToolHandler::setEraserThickness(double radius) { setCustomThickness(TOOL_ERASER, radius); }
+
+auto ToolHandler::hasCustomEraserThickness() const -> bool { return hasCustomThickness(TOOL_ERASER); }
+
+auto ToolHandler::getEraserThickness() const -> double { return getCustomOrPresetThickness(TOOL_ERASER); }
 
 void ToolHandler::setHighlighterSize(ToolSize size) {
-    this->tools[TOOL_HIGHLIGHTER - TOOL_PEN]->setSize(size);
-
+    Tool* highlighter = this->tools[TOOL_HIGHLIGHTER - TOOL_PEN].get();
+    highlighter->customThickness.reset();
+    highlighter->setSize(size);
     if (this->activeTool->type == TOOL_HIGHLIGHTER) {
+        this->activeTool->customThickness.reset();
+        if (this->activeTool != highlighter) {
+            this->activeTool->setSize(size);
+        }
         this->stateChangeListener->toolSizeChanged();
     }
 }
+
+void ToolHandler::setHighlighterThickness(double thickness) { setCustomThickness(TOOL_HIGHLIGHTER, thickness); }
+
+auto ToolHandler::getHighlighterThickness() const -> double {
+    return getCustomOrPresetThickness(TOOL_HIGHLIGHTER);
+}
+
+auto ToolHandler::hasCustomHighlighterThickness() const -> bool { return hasCustomThickness(TOOL_HIGHLIGHTER); }
 
 void ToolHandler::setPenFillEnabled(bool fill) {
     this->tools[TOOL_PEN - TOOL_PEN]->setFill(fill);
@@ -376,9 +428,9 @@ void ToolHandler::setSize(ToolSize size) {
         g_warning("ToolHandler::setSize: Invalid size! %i", size);
 
     Tool* tool = this->toolbarSelectedTool;
-    if (tool->type == TOOL_ERASER) {
+    if (thicknessLimits(tool->type)) {
         tool->customThickness.reset();
-        if (this->activeTool->type == TOOL_ERASER) {
+        if (this->activeTool->type == tool->type) {
             this->activeTool->customThickness.reset();
         }
     }
@@ -520,7 +572,7 @@ void ToolHandler::saveSettings() const {
             }
 
             st.setString("size", value);
-            if (tool->type == TOOL_ERASER) {
+            if (thicknessLimits(tool->type)) {
                 if (tool->customThickness) {
                     st.setDouble("thickness", *tool->customThickness);
                 } else {
@@ -614,10 +666,10 @@ void ToolHandler::loadSettings() {
                 }
             }
 
-            if (tool->type == TOOL_ERASER) {
-                double radius = 0.0;
-                if (st.getDouble("thickness", radius)) {
-                    tool->customThickness = std::clamp(radius, ERASER_MIN_RADIUS, ERASER_MAX_RADIUS);
+            if (const auto limits = thicknessLimits(tool->type)) {
+                double thickness = 0.0;
+                if (st.getDouble("thickness", thickness)) {
+                    tool->customThickness = std::clamp(thickness, limits->min, limits->max);
                 }
             }
 
